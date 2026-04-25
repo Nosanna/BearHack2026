@@ -1,0 +1,240 @@
+// Fixit Fred — Prisma schema (spec 01_prisma_schema.md)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum ApplianceType {
+  REFRIGERATOR
+  DISHWASHER
+  WASHING_MACHINE
+  DRYER
+  OVEN
+  STOVE
+  MICROWAVE
+  AIR_CONDITIONER
+  WATER_HEATER
+  FURNACE
+  GARBAGE_DISPOSAL
+  RANGE_HOOD
+  OTHER
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  OVERDUE
+}
+
+enum RepairStatus {
+  ACTIVE
+  COMPLETED
+  ABANDONED
+  ESCALATED
+}
+
+enum RepairEventType {
+  STATE_ENTERED
+  USER_RESPONSE
+  PHOTO_SUBMITTED
+  PHOTO_VERIFIED
+  PHOTO_REJECTED
+  ESCALATED
+  COMPLETED
+}
+
+enum NotificationKind {
+  TASK_DUE
+  TASK_OVERDUE
+  REPAIR_COMPLETE
+  REPAIR_ABANDONED
+  PLAN_GENERATED
+}
+
+// ---------- Models ----------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  googleSub    String?  @unique
+  name         String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  rooms                Room[]
+  appliances           Appliance[]
+  maintenanceTasks     MaintenanceTask[]
+  repairSessions       RepairSession[]
+  repairPlans          RepairPlan[]
+  notifications        Notification[]
+  refreshTokens        RefreshToken[]
+}
+
+model RefreshToken {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 hash of the issued refresh token; raw token never stored.
+  tokenHash    String   @unique
+  /// When this token was rotated/revoked.
+  revokedAt    DateTime?
+  /// New token's id, set when this one is rotated, for audit / replay detection.
+  replacedById String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  userAgent    String?
+  ip           String?
+
+  @@index([userId])
+}
+
+model Room {
+  id         String   @id @default(cuid())
+  ownerId    String
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  appliances Appliance[]
+
+  @@index([ownerId])
+}
+
+model Appliance {
+  id          String        @id @default(cuid())
+  ownerId     String
+  owner       User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  roomId      String
+  room        Room          @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  type        ApplianceType
+  brand       String?
+  model       String?
+  nickname    String?
+  installedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  images           ApplianceImage[]
+  maintenanceTasks MaintenanceTask[]
+  repairSessions   RepairSession[]
+  repairPlans      RepairPlan[]
+
+  @@index([ownerId])
+  @@index([roomId])
+}
+
+model ApplianceImage {
+  id          String    @id @default(cuid())
+  applianceId String
+  appliance   Appliance @relation(fields: [applianceId], references: [id], onDelete: Cascade)
+  /// S3 object key inside our bucket.
+  key         String
+  /// Public URL (or, for private buckets, the canonical "logical" URL we re-sign on read).
+  url         String
+  isPrimary   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  @@index([applianceId])
+}
+
+model MaintenanceTask {
+  id               String     @id @default(cuid())
+  ownerId          String
+  owner            User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  applianceId      String
+  appliance        Appliance  @relation(fields: [applianceId], references: [id], onDelete: Cascade)
+  title            String
+  description      String?
+  dueDate          DateTime
+  status           TaskStatus @default(PENDING)
+  estimatedMinutes Int?
+  /// Optional cadence in days for recurring tasks.
+  cadenceDays      Int?
+  completedAt      DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@index([ownerId, status, dueDate])
+  @@index([applianceId])
+}
+
+model RepairPlan {
+  id           String    @id @default(cuid())
+  ownerId      String
+  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  applianceId  String
+  appliance    Appliance @relation(fields: [applianceId], references: [id], onDelete: Cascade)
+  symptom      String
+  diagnosis    String
+  /// String[] for portability; serialized JSON on RepairStateMachine lives in stateMachine.
+  safetyWarnings String[]
+  /// Validated RepairStateMachine JSON document (see packages/shared).
+  stateMachine Json
+  modelName    String
+  createdAt    DateTime  @default(now())
+
+  sessions RepairSession[]
+
+  @@index([applianceId])
+}
+
+model RepairSession {
+  id              String        @id @default(cuid())
+  ownerId         String
+  owner           User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  applianceId     String
+  appliance       Appliance     @relation(fields: [applianceId], references: [id], onDelete: Cascade)
+  planId          String
+  plan            RepairPlan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  status          RepairStatus  @default(ACTIVE)
+  /// Pointer into RepairPlan.stateMachine.states.
+  currentStateId  String
+  startedAt       DateTime      @default(now())
+  endedAt         DateTime?
+  lastActivityAt  DateTime      @default(now())
+
+  events RepairEvent[]
+
+  @@index([ownerId, status])
+  @@index([applianceId])
+}
+
+model RepairEvent {
+  id        String           @id @default(cuid())
+  sessionId String
+  session   RepairSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  type      RepairEventType
+  fromStateId String?
+  toStateId   String?
+  /// Free-form payload (user answer text, photo URL, model verdict, etc.)
+  payload   Json?
+  createdAt DateTime         @default(now())
+
+  @@index([sessionId, createdAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      NotificationKind
+  title     String
+  body      String
+  /// Soft pointer (e.g. taskId, sessionId).
+  refId     String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt])
+}

@@ -1,0 +1,22 @@
+{
+  "name": "fixit-fred",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fixit Fred — AI-powered home appliance repair and maintenance assistant.",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev:infra": "docker compose up -d postgres redis",
+    "dev:infra:down": "docker compose down",
+    "dev:api": "pnpm --filter @fixit/api start:dev",
+    "dev:mobile": "pnpm --filter @fixit/mobile start",
+    "build": "pnpm -r --filter \"./packages/*\" build && pnpm --filter @fixit/api build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "prisma:generate": "pnpm --filter @fixit/api prisma:generate",
+    "prisma:migrate": "pnpm --filter @fixit/api prisma:migrate",
+    "prisma:studio": "pnpm --filter @fixit/api prisma:studio"
+  }
+}

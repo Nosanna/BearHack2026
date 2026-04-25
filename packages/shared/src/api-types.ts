@@ -1,0 +1,150 @@
+import type { ApplianceType, TaskStatus, RepairStatus } from './enums';
+import type { RepairState, StateId } from './state-machine';
+
+// ---- Auth ----
+export interface LoginRequest {
+  /** Google ID token from Expo AuthSession / Google Sign-In. */
+  idToken: string;
+}
+
+export interface LoginResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: UserDto;
+}
+
+export interface RefreshRequest {
+  refreshToken: string;
+}
+
+export interface UserDto {
+  id: string;
+  email: string;
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+// ---- Rooms ----
+export interface RoomDto {
+  id: string;
+  name: string;
+  applianceCount: number;
+  createdAt: string;
+}
+
+export interface CreateRoomRequest {
+  name: string;
+}
+
+// ---- Appliances ----
+export interface ApplianceDto {
+  id: string;
+  roomId: string;
+  type: ApplianceType;
+  brand: string | null;
+  model: string | null;
+  nickname: string | null;
+  installedAt: string | null;
+  primaryImageUrl: string | null;
+  createdAt: string;
+}
+
+export interface ApplianceDetailDto extends ApplianceDto {
+  images: { id: string; url: string; createdAt: string }[];
+  upcomingTasks: MaintenanceTaskDto[];
+  recentRepairs: { id: string; status: RepairStatus; startedAt: string }[];
+}
+
+export interface RegisterFromImageRequest {
+  roomId: string;
+  /** Either a public URL we can fetch or a base64 data URL. The mobile client uploads to S3 first and sends the resulting URL. */
+  imageUrl: string;
+  nickname?: string;
+}
+
+export interface RegisterFromImageResponse {
+  appliance: ApplianceDto;
+  detected: {
+    type: ApplianceType;
+    brand: string | null;
+    model: string | null;
+    confidence: number;
+  };
+}
+
+// ---- Dashboard ----
+export interface DashboardHomeResponse {
+  user: UserDto;
+  rooms: RoomDto[];
+  upcomingTasks: MaintenanceTaskDto[];
+  activeRepairSessionId: string | null;
+}
+
+// ---- Maintenance / Schedule ----
+export interface MaintenanceTaskDto {
+  id: string;
+  applianceId: string;
+  applianceNickname: string | null;
+  applianceType: ApplianceType;
+  title: string;
+  description: string | null;
+  dueDate: string;
+  status: TaskStatus;
+  estimatedMinutes: number | null;
+}
+
+export interface ScheduleUpcomingResponse {
+  tasks: MaintenanceTaskDto[];
+}
+
+// ---- Media ----
+export interface SignedUploadRequest {
+  contentType: string;
+  /** logical purpose: e.g. "appliance", "repair-step" */
+  kind: 'appliance' | 'repair-step';
+}
+
+export interface SignedUploadResponse {
+  uploadUrl: string;
+  publicUrl: string;
+  key: string;
+  headers: Record<string, string>;
+  expiresAt: string;
+}
+
+// ---- Repair ----
+export interface StartRepairRequest {
+  applianceId: string;
+  symptom: string;
+}
+
+export interface RepairSessionDto {
+  id: string;
+  applianceId: string;
+  status: RepairStatus;
+  diagnosis: string;
+  safetyWarnings: string[];
+  currentStateId: StateId;
+  currentState: RepairState;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+export interface RespondRequest {
+  /** Free text or selected option. */
+  answer: string;
+}
+
+export interface RepairPhotoRequest {
+  imageUrl: string;
+}
+
+export interface RepairTransitionResponse {
+  session: RepairSessionDto;
+  /** True if the latest input advanced (or completed) the machine. */
+  advanced: boolean;
+  /** For verify_photo: whether the photo passed verification. */
+  photoPassed?: boolean;
+  /** Free-text feedback to show the user (from the vision model). */
+  feedback?: string;
+}
