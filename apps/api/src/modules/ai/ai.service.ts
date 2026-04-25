@@ -1,3 +1,4 @@
+// Gemini multi-model fallback: see resolveModelChain + runWithFallback below.
 import {
   Injectable,
   InternalServerErrorException,
@@ -30,18 +31,42 @@ export interface PhotoVerification {
   feedback: string;
 }
 
+/** Default fallback chains for each task. Highest-quality first; each
+ * subsequent model has a different/larger free-tier daily quota so we can
+ * keep serving traffic if the primary is exhausted. */
+const DEFAULT_PLANNER_CHAIN = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+];
+const DEFAULT_VISION_CHAIN = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+];
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private readonly client: GoogleGenAI | null;
-  private readonly plannerModel: string;
-  private readonly visionModel: string;
+  private readonly plannerModels: string[];
+  private readonly visionModels: string[];
   private readonly callTimeoutMs: number;
 
   constructor(private readonly config: ConfigService) {
     const apiKey = config.get<string>('GEMINI_API_KEY');
-    this.plannerModel = config.get<string>('GEMINI_PLANNER_MODEL') ?? 'gemini-2.0-flash';
-    this.visionModel = config.get<string>('GEMINI_VISION_MODEL') ?? 'gemini-2.0-flash';
+    this.plannerModels = resolveModelChain(
+      config.get<string>('GEMINI_PLANNER_MODELS'),
+      config.get<string>('GEMINI_PLANNER_MODEL'),
+      DEFAULT_PLANNER_CHAIN,
+    );
+    this.visionModels = resolveModelChain(
+      config.get<string>('GEMINI_VISION_MODELS'),
+      config.get<string>('GEMINI_VISION_MODEL'),
+      DEFAULT_VISION_CHAIN,
+    );
     this.callTimeoutMs = Number(config.get<string>('GEMINI_TIMEOUT_MS') ?? '30000');
 
     if (!apiKey) {
@@ -49,6 +74,9 @@ export class AiService {
       this.client = null;
     } else {
       this.client = new GoogleGenAI({ apiKey });
+      this.logger.log(
+        `Gemini chains — planner: [${this.plannerModels.join(' → ')}], vision: [${this.visionModels.join(' → ')}]`,
+      );
     }
   }
 
@@ -99,6 +127,43 @@ export class AiService {
     }
   }
 
+  /**
+   * Try each model in `chain` in order. If a model fails with a recoverable
+   * error (quota exhausted, rate-limited, transient unavailability, timeout),
+   * cascade to the next one. Returns the first successful result, plus the
+   * model name that produced it. Throws the last error if every model fails.
+   */
+  private async runWithFallback<T>(
+    label: string,
+    chain: string[],
+    buildCall: (model: string) => Promise<T>,
+  ): Promise<{ result: T; model: string }> {
+    let lastError: unknown;
+    for (let i = 0; i < chain.length; i++) {
+      const model = chain[i]!;
+      const isLast = i === chain.length - 1;
+      try {
+        const result = await this.runWithTelemetry(label, model, () =>
+          buildCall(model),
+        );
+        if (i > 0) {
+          this.logger.warn(
+            `[gemini] ${label} succeeded on fallback model "${model}" (position ${i + 1} in chain).`,
+          );
+        }
+        return { result, model };
+      } catch (e) {
+        lastError = e;
+        if (isLast || !isRecoverableModelError(e)) throw e;
+        const nextModel = chain[i + 1]!;
+        this.logger.warn(
+          `[gemini] ${label} on "${model}" hit recoverable error — falling back to "${nextModel}". (${shortError(e)})`,
+        );
+      }
+    }
+    throw lastError;
+  }
+
   // ---- Planner ----
 
   async generateRepairPlan(input: {
@@ -116,16 +181,19 @@ export class AiService {
       .filter(Boolean)
       .join('\n\n');
 
-    const response = await this.runWithTelemetry('planner', this.plannerModel, () =>
-      this.client!.models.generateContent({
-        model: this.plannerModel,
-        contents: [{ role: 'user', parts: [{ text: userText }] }],
-        config: {
-          systemInstruction: PLANNER_SYSTEM_PROMPT,
-          responseMimeType: 'application/json',
-          temperature: 0.2,
-        },
-      }),
+    const { result: response, model } = await this.runWithFallback(
+      'planner',
+      this.plannerModels,
+      (m) =>
+        this.client!.models.generateContent({
+          model: m,
+          contents: [{ role: 'user', parts: [{ text: userText }] }],
+          config: {
+            systemInstruction: PLANNER_SYSTEM_PROMPT,
+            responseMimeType: 'application/json',
+            temperature: 0.2,
+          },
+        }),
     );
 
     const raw = extractText(response);
@@ -140,7 +208,7 @@ export class AiService {
       );
       throw new InternalServerErrorException('Planner returned an invalid state machine.');
     }
-    return { ...parsed, modelName: this.plannerModel };
+    return { ...parsed, modelName: model };
   }
 
   // ---- Vision: appliance recognition ----
@@ -151,24 +219,27 @@ export class AiService {
     }
 
     const inline = await fetchImageAsInlinePart(imageUrl);
-    const response = await this.runWithTelemetry('detect-appliance', this.visionModel, () =>
-      this.client!.models.generateContent({
-        model: this.visionModel,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              inline,
-              { text: 'Identify the appliance in this photo per the JSON contract.' },
-            ],
+    const { result: response } = await this.runWithFallback(
+      'detect-appliance',
+      this.visionModels,
+      (m) =>
+        this.client!.models.generateContent({
+          model: m,
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                inline,
+                { text: 'Identify the appliance in this photo per the JSON contract.' },
+              ],
+            },
+          ],
+          config: {
+            systemInstruction: REGISTER_FROM_IMAGE_SYSTEM_PROMPT,
+            responseMimeType: 'application/json',
+            temperature: 0.1,
           },
-        ],
-        config: {
-          systemInstruction: REGISTER_FROM_IMAGE_SYSTEM_PROMPT,
-          responseMimeType: 'application/json',
-          temperature: 0.1,
-        },
-      }),
+        }),
     );
 
     const raw = extractText(response);
@@ -201,26 +272,29 @@ export class AiService {
     }
 
     const inline = await fetchImageAsInlinePart(input.imageUrl);
-    const response = await this.runWithTelemetry('verify-photo', this.visionModel, () =>
-      this.client!.models.generateContent({
-        model: this.visionModel,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              inline,
-              {
-                text: `expected_visual = ${JSON.stringify(input.expectedVisual)}`,
-              },
-            ],
+    const { result: response } = await this.runWithFallback(
+      'verify-photo',
+      this.visionModels,
+      (m) =>
+        this.client!.models.generateContent({
+          model: m,
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                inline,
+                {
+                  text: `expected_visual = ${JSON.stringify(input.expectedVisual)}`,
+                },
+              ],
+            },
+          ],
+          config: {
+            systemInstruction: VERIFY_PHOTO_SYSTEM_PROMPT,
+            responseMimeType: 'application/json',
+            temperature: 0.0,
           },
-        ],
-        config: {
-          systemInstruction: VERIFY_PHOTO_SYSTEM_PROMPT,
-          responseMimeType: 'application/json',
-          temperature: 0.0,
-        },
-      }),
+        }),
     );
 
     const raw = extractText(response);
@@ -244,6 +318,60 @@ export class AiService {
 }
 
 // ---- helpers ----
+
+/**
+ * Parse a model chain from env. Priority:
+ *   1. explicit comma-separated `*_MODELS` (preferred)
+ *   2. legacy single `*_MODEL` (becomes a single-entry chain — back-compat)
+ *   3. built-in default chain
+ * Whitespace and empty entries are stripped; duplicates removed.
+ */
+function resolveModelChain(
+  csv: string | undefined,
+  legacySingle: string | undefined,
+  fallbackDefault: string[],
+): string[] {
+  const parse = (s: string) =>
+    s
+      .split(',')
+      .map((x) => x.trim())
+      .filter((x) => x.length > 0);
+  let list: string[] = [];
+  if (csv && csv.trim().length > 0) list = parse(csv);
+  else if (legacySingle && legacySingle.trim().length > 0)
+    list = [legacySingle.trim()];
+  else list = [...fallbackDefault];
+  return Array.from(new Set(list));
+}
+
+/**
+ * True when the error from a model call is something that another model in
+ * the chain might survive: quota exhaustion, rate limit, transient
+ * unavailability, server overload, or our own client-side timeout.
+ *
+ * False for hard errors that won't improve by switching models (auth,
+ * malformed-request, etc.) so we don't waste budget cascading.
+ */
+function isRecoverableModelError(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false;
+  const err = e as { status?: number; code?: number | string; message?: string };
+  const status =
+    typeof err.status === 'number'
+      ? err.status
+      : typeof err.code === 'number'
+        ? err.code
+        : undefined;
+  if (status === 429 || status === 500 || status === 503 || status === 504) return true;
+  const msg = (err.message ?? '').toString();
+  return /RESOURCE_EXHAUSTED|UNAVAILABLE|INTERNAL|DEADLINE_EXCEEDED|quota|rate.?limit|overloaded|timed out|too many requests/i.test(
+    msg,
+  );
+}
+
+function shortError(e: unknown): string {
+  const msg = (e as { message?: string })?.message ?? String(e);
+  return msg.length > 160 ? `${msg.slice(0, 157)}…` : msg;
+}
 
 function extractText(response: unknown): string {
   // The new @google/genai SDK exposes .text on the response. Be defensive.
