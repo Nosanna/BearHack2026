@@ -45,8 +45,8 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpExceptionFilter());
 
   const config = new DocumentBuilder()
-    .setTitle('Fixit Fred API')
-    .setDescription('AI-powered home appliance repair and maintenance assistant.')
+    .setTitle('Home Hero API')
+    .setDescription('AI-powered home equipment repair and maintenance assistant.')
     .setVersion('0.1.0')
     .addBearerAuth()
     .build();
@@ -56,7 +56,7 @@ async function bootstrap() {
   const port = Number(process.env.API_PORT ?? 4000);
   // Bind to 0.0.0.0 so devices on the same LAN (e.g. an Expo Go phone) can reach the API.
   await app.listen(port, '0.0.0.0');
-  Logger.log(`Fixit Fred API listening on http://0.0.0.0:${port}`, 'Bootstrap');
+  Logger.log(`Home Hero API listening on http://0.0.0.0:${port}`, 'Bootstrap');
   Logger.log(`Swagger UI on http://localhost:${port}/docs`, 'Bootstrap');
 }
 

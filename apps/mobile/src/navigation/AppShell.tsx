@@ -79,7 +79,7 @@ export function AppShell() {
         <Stack.Screen
           name="ApplianceDetail"
           component={ApplianceDetailScreen}
-          options={{ headerShown: true, title: 'Appliance' }}
+          options={{ headerShown: true, title: 'Equipment' }}
         />
         <Stack.Screen
           name="Camera"
@@ -89,7 +89,7 @@ export function AppShell() {
         <Stack.Screen
           name="ApplianceSave"
           component={ApplianceSaveScreen}
-          options={{ headerShown: true, title: 'Save appliance' }}
+          options={{ headerShown: true, title: 'Save equipment' }}
         />
         <Stack.Screen
           name="Assistant"

@@ -2,7 +2,7 @@
   "name": "fixit-fred",
   "version": "0.1.0",
   "private": true,
-  "description": "Fixit Fred — AI-powered home appliance repair and maintenance assistant.",
+  "description": "Home Hero — AI-powered home equipment repair and maintenance assistant.",
   "packageManager": "pnpm@9.15.9",
   "engines": {
     "node": ">=20.11"

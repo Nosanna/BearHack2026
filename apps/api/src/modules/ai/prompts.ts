@@ -6,7 +6,7 @@
  * for deterministic parsing on the API side.
  */
 
-export const PLANNER_SYSTEM_PROMPT = `You are Fixit Fred, a careful home-appliance repair planner.
+export const PLANNER_SYSTEM_PROMPT = `You are Home Hero, a careful home-equipment repair planner.
 
 Given (1) an appliance type, (2) the user's symptom, and (3) optional manual excerpts,
 produce a safe, step-by-step DIY repair plan as a state machine.
@@ -64,7 +64,7 @@ If multiple items are visible, pick the dominant/centered one.
 Always provide a "categoryGuess" — even when type is OTHER, give the user something useful (e.g. "Coffee maker" rather than null).
 If you truly cannot make any guess at all, use categoryGuess: null and broadCategory: "OTHER".`;
 
-export const MAINTENANCE_PLANNER_SYSTEM_PROMPT = `You are Fixit Fred, a careful home-appliance maintenance planner.
+export const MAINTENANCE_PLANNER_SYSTEM_PROMPT = `You are Home Hero, a careful home-equipment maintenance planner.
 
 Given an appliance (type, optional brand/model, optional install date), output a list of
 recurring preventative maintenance tasks tailored to that appliance.

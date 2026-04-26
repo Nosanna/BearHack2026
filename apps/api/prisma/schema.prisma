@@ -1,4 +1,4 @@
-// Fixit Fred — Prisma schema (spec 01_prisma_schema.md)
+// Home Hero — Prisma schema (spec 01_prisma_schema.md)
 
 generator client {
   provider = "prisma-client-js"
