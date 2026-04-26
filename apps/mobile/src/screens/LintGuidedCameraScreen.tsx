@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import type { RouteProp } from '@react-navigation/native';
 import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
@@ -32,163 +32,96 @@ export function LintGuidedCameraScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
   const isFocused = useIsFocused();
-  const { applianceId, taskTitle, taskDescription } = route.params;
+  const { applianceId, taskId } = route.params;
 
   const camRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [busy, setBusy] = useState(false);
-  const [boxes, setBoxes] = useState<Box[]>([]);
-  const [previewSize, setPreviewSize] = useState<{ w: number; h: number }>({ w: 1, h: 1 });
-  const [lastCaptureSize, setLastCaptureSize] = useState<{ w: number; h: number } | null>(null);
+  const [stage, setStage] = useState<'camera' | 'review'>('camera');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [captureSize, setCaptureSize] = useState<{ w: number; h: number } | null>(null);
+  const [target, setTarget] = useState<Box | null>(null);
+  const [imgLayout, setImgLayout] = useState<{ w: number; h: number }>({ w: 1, h: 1 });
 
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
   }, [permission]);
 
-  useEffect(() => {
-    if (!isFocused) return;
-    if (!permission?.granted) return;
-    let timer: any = null;
-    let stopped = false;
+  const takeOnePhoto = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const pic = await camRef.current?.takePictureAsync({ quality: 1.0, skipProcessing: false });
+      if (!pic?.uri) throw new Error('No photo captured.');
+      const w = pic.width ?? 0;
+      const h = pic.height ?? 0;
+      setCaptureSize({ w, h });
 
-    const tick = async () => {
-      if (busy || stopped) return;
-      try {
-        setBusy(true);
-        const pic = await camRef.current?.takePictureAsync({ quality: 1.0, skipProcessing: false });
-        if (!pic?.uri) return;
-        setLastCaptureSize({ w: pic.width ?? 0, h: pic.height ?? 0 });
-        // #region agent log
-        fetch('http://127.0.0.1:7901/ingest/858e3ef0-15fa-4006-be55-bfedf1b0470c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'239de5'},body:JSON.stringify({sessionId:'239de5',runId:'pre-fix',hypothesisId:'B1',location:'LintGuidedCameraScreen.tsx:tick-capture',message:'Captured frame + preview sizing',data:{quality:1.0,skipProcessing:false,picW:pic.width??null,picH:pic.height??null,previewW:previewSize.w,previewH:previewSize.h,uriPrefix:String(pic.uri).slice(0,30)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
+      const signed = await api.signedUpload({ contentType: 'image/jpeg', kind: 'repair-step' });
+      const publicUrl = await uploadToSignedUrl(signed, pic.uri);
+      setImageUrl(publicUrl);
 
-        const signed = await api.signedUpload({ contentType: 'image/jpeg', kind: 'repair-step' });
-        const publicUrl = await uploadToSignedUrl(signed, pic.uri);
-        const det = await api.detectParts({ imageUrl: publicUrl });
-        if (__DEV__) {
-          const raw = det.detections ?? [];
-          const filterLike = raw
-            .map((d) => ({ label: String(d.label ?? ''), confidence: d.confidence ?? 0 }))
-            .filter((d) => d.label.toLowerCase().includes('filter'));
-          console.log('[lintflow][raw] detections', {
-            rawCount: raw.length,
-            rawTop3: raw
-              .slice(0, 3)
-              .map((d) => ({ label: d.label, confidence: d.confidence, bbox: d.bbox })),
-            filterLike,
-          });
-        }
-        const filtered = (det.detections ?? []).filter((d) => {
-          const conf = d.confidence ?? 0;
-          const label = String(d.label ?? '').toLowerCase();
-          const isFilter = label.includes('filter');
-          return isFilter ? conf >= 0.3 : conf >= 0.7;
-        });
-        setBoxes(filtered);
-        // #region agent log
-        fetch('http://127.0.0.1:7901/ingest/858e3ef0-15fa-4006-be55-bfedf1b0470c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'239de5'},body:JSON.stringify({sessionId:'239de5',runId:'pre-fix',hypothesisId:'B2',location:'LintGuidedCameraScreen.tsx:tick-detections',message:'Received detections',data:{count:det.detections?.length??0,count70:filtered.length,first:det.detections?.[0]??null,first70:filtered[0]??null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
+      const det = await api.detectParts({ imageUrl: publicUrl });
+      const raw = det.detections ?? [];
+      const pickBest = (pred: (d: any) => boolean) =>
+        raw
+          .filter(pred)
+          .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))[0] ?? null;
 
-        // Evidence for orientation mismatch debugging (view stays portrait, capture flips).
-        if (__DEV__) {
-          console.log('[lintflow][bbox] preview/capture', {
-            previewW: Math.round(previewSize.w),
-            previewH: Math.round(previewSize.h),
-            picW: pic.width ?? null,
-            picH: pic.height ?? null,
-            first70: filtered[0] ?? null,
-          });
-        }
-      } catch (e) {
-        // don’t spam alerts while streaming; show once
-        if (!stopped) Alert.alert('Detection failed', (e as Error).message);
-        stopped = true;
-      } finally {
-        setBusy(false);
-      }
-    };
+      const filterBox = pickBest((d) => String(d.label ?? '').toLowerCase().includes('filter') && (d.confidence ?? 0) >= 0.3);
+      const drumBox = pickBest((d) => String(d.label ?? '').toLowerCase().includes('drum'));
+      setTarget((filterBox ?? drumBox) as Box | null);
 
-    // ~1.25fps (accuracy > smoothness; keep some responsiveness)
-    timer = setInterval(tick, 800);
-    void tick();
-    return () => {
-      stopped = true;
-      if (timer) clearInterval(timer);
-    };
-  }, [isFocused, permission?.granted, busy]);
-
-  const overlays = useMemo(() => {
-    const picW = lastCaptureSize?.w ?? 0;
-    const picH = lastCaptureSize?.h ?? 0;
-    const previewIsPortrait = previewSize.h >= previewSize.w;
-    const captureIsLandscape = picW > 0 && picH > 0 && picW > picH;
-
-    // If the UI is portrait-locked but the capture is landscape, rotate bboxes.
-    // This fixes the common iOS behavior where takePictureAsync swaps width/height
-    // while the app remains portrait.
-    const normalizedForPreview =
-      previewIsPortrait && captureIsLandscape ? boxes.map(rotate90CW) : boxes;
-
-    if (__DEV__) {
-      console.log('[lintflow][bbox] map', {
-        previewW: Math.round(previewSize.w),
-        previewH: Math.round(previewSize.h),
-        picW,
-        picH,
-        rotated: previewIsPortrait && captureIsLandscape,
-      });
+      setStage('review');
+    } catch (e) {
+      Alert.alert('Could not capture', (e as Error).message);
+    } finally {
+      setBusy(false);
     }
+  }, [busy]);
 
-    return normalizedForPreview.map((b, idx) => {
-      const w = previewSize.w * clamp01(b.bbox.w);
-      const h = previewSize.h * clamp01(b.bbox.h);
-      const left = previewSize.w * (clamp01(b.bbox.x) - clamp01(b.bbox.w) / 2);
-      const top = previewSize.h * (clamp01(b.bbox.y) - clamp01(b.bbox.h) / 2);
-      const isLint = /lint/i.test(b.label);
-      return (
-        <View
-          key={`${b.label}-${idx}`}
-          style={[
-            styles.box,
-            {
-              borderColor: isLint ? theme.colors.accent : theme.colors.border,
-              left,
-              top,
-              width: w,
-              height: h,
-            },
-          ]}
-        >
-          <View style={[styles.boxLabel, { backgroundColor: isLint ? theme.colors.accent : theme.colors.bgElevated }]}>
-            <Text style={[styles.boxLabelText, { color: isLint ? theme.colors.bg : theme.colors.text }]}>
-              {b.label} {(b.confidence * 100).toFixed(0)}%
-            </Text>
-          </View>
-        </View>
-      );
-    });
-  }, [boxes, previewSize, lastCaptureSize]);
+  const rect = useMemo(() => {
+    if (!target || !captureSize) return null;
+    const cw = captureSize.w;
+    const ch = captureSize.h;
+    if (!cw || !ch) return null;
+
+    // Image is rendered with resizeMode='contain' inside imgLayout.
+    const scale = Math.min(imgLayout.w / cw, imgLayout.h / ch);
+    const dispW = cw * scale;
+    const dispH = ch * scale;
+    const offsetX = (imgLayout.w - dispW) / 2;
+    const offsetY = (imgLayout.h - dispH) / 2;
+
+    const x = clamp01(target.bbox.x);
+    const y = clamp01(target.bbox.y);
+    const w = clamp01(target.bbox.w);
+    const h = clamp01(target.bbox.h);
+
+    const left = offsetX + (x - w / 2) * cw * scale;
+    const top = offsetY + (y - h / 2) * ch * scale;
+    const width = w * cw * scale;
+    const height = h * ch * scale;
+
+    return { left, top, width, height };
+  }, [target, captureSize, imgLayout]);
+
+  const instructions = useMemo(() => {
+    const hasFilter = !!target && String(target.label ?? '').toLowerCase().includes('filter');
+    return hasFilter
+      ? '1) Pull the lint filter out.\n2) Peel lint off by hand.\n3) Rinse under warm water if needed, then dry fully.\n4) Reinsert the filter.'
+      : 'We could not confidently find the lint filter.\nLook near the drum opening and the door area. Clean the lint screen/filter and reinsert it fully.';
+  }, [target]);
 
   const [advancing, setAdvancing] = useState(false);
-  const onNext = async () => {
+  const onMarkDone = async () => {
     if (advancing) return;
     setAdvancing(true);
     try {
-      const symptomText = [
-        `Perform maintenance task: ${taskTitle}`,
-        taskDescription ? `Details: ${taskDescription}` : null,
-        'Make this a safe step-by-step maintenance checklist as a state machine.',
-      ]
-        .filter(Boolean)
-        .join('\n');
-      // #region agent log
-      fetch('http://127.0.0.1:7901/ingest/858e3ef0-15fa-4006-be55-bfedf1b0470c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'239de5'},body:JSON.stringify({sessionId:'239de5',runId:'pre-fix',hypothesisId:'G3',location:'LintGuidedCameraScreen.tsx:onNext',message:'Starting repair session AFTER YOLO step',data:{applianceId,taskTitle},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion agent log
-      console.log('[lintflow] Next pressed → startRepair now', { applianceId, taskTitle });
-      const session = await api.startRepair({ applianceId, symptom: symptomText });
-      nav.replace('Assistant', { sessionId: session.id });
+      await api.completeTask(taskId);
+      nav.goBack();
     } catch (e) {
-      Alert.alert('Could not start guided maintenance', (e as Error).message);
+      Alert.alert('Could not complete task', (e as Error).message);
       setAdvancing(false);
     }
   };
@@ -214,25 +147,56 @@ export function LintGuidedCameraScreen() {
 
   return (
     <View style={styles.root}>
-      <View
-        style={styles.previewWrap}
-        onLayout={(e) => setPreviewSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
-      >
-        <CameraView ref={camRef} style={StyleSheet.absoluteFill} facing="back" />
-        {overlays}
-      </View>
-
-      <View style={styles.footer}>
-        <Text style={styles.hint}>Point the camera at the lint filter. Boxes will highlight parts.</Text>
-        {lastCaptureSize?.w && lastCaptureSize?.h ? (
-          <Text style={styles.hint}>
-            Capture {lastCaptureSize.w}×{lastCaptureSize.h} · Preview {Math.round(previewSize.w)}×{Math.round(previewSize.h)}
-          </Text>
-        ) : null}
-        <Pressable style={[styles.next, advancing && { opacity: 0.7 }]} onPress={onNext} disabled={advancing}>
-          <Text style={styles.nextText}>{advancing ? 'Starting…' : 'Next'}</Text>
-        </Pressable>
-      </View>
+      {stage === 'camera' ? (
+        <View style={styles.cameraWrap}>
+          <CameraView ref={camRef} style={StyleSheet.absoluteFill} facing="back" />
+          <View style={styles.footer}>
+            <Text style={styles.hint}>Take a photo so we can label the lint filter.</Text>
+            <Pressable style={[styles.next, busy && { opacity: 0.7 }]} onPress={takeOnePhoto} disabled={busy}>
+              <Text style={styles.nextText}>{busy ? 'Working…' : 'Take photo'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.reviewWrap}>
+          <View style={styles.reviewRow}>
+            <View
+              style={styles.imagePane}
+              onLayout={(e) => setImgLayout({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+            >
+              {imageUrl ? (
+                <>
+                  <Image source={{ uri: imageUrl }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+                  {rect ? (
+                    <View style={[styles.box, { left: rect.left, top: rect.top, width: rect.width, height: rect.height }]}>
+                      <View style={styles.boxLabel}>
+                        <Text style={styles.boxLabelText}>
+                          {target?.label ?? 'target'} {(((target?.confidence ?? 0) * 100) as number).toFixed(0)}%
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+                </>
+              ) : (
+                <View style={styles.center}>
+                  <ActivityIndicator color={theme.colors.accent} />
+                </View>
+              )}
+            </View>
+            <View style={styles.instructionPane}>
+              <Text style={styles.instructionsTitle}>
+                {target && String(target.label ?? '').toLowerCase().includes('filter') ? 'Lint filter' : 'Drum area'}
+              </Text>
+              <Text style={styles.instructionsBody}>{instructions}</Text>
+            </View>
+          </View>
+          <View style={styles.footer}>
+            <Pressable style={[styles.next, advancing && { opacity: 0.7 }]} onPress={onMarkDone} disabled={advancing}>
+              <Text style={styles.nextText}>{advancing ? 'Saving…' : 'Mark done'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -241,7 +205,11 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.bg },
   text: { ...theme.font.body, color: theme.colors.text, marginBottom: theme.spacing.md },
-  previewWrap: { flex: 1, position: 'relative', backgroundColor: theme.colors.border },
+  cameraWrap: { flex: 1, position: 'relative', backgroundColor: theme.colors.border },
+  reviewWrap: { flex: 1 },
+  reviewRow: { flex: 1, flexDirection: 'row' },
+  imagePane: { flex: 1, backgroundColor: theme.colors.border, position: 'relative' },
+  instructionPane: { width: 160, padding: theme.spacing.md, backgroundColor: theme.colors.bgElevated },
   footer: { padding: theme.spacing.lg, gap: theme.spacing.md, backgroundColor: theme.colors.bg },
   hint: { ...theme.font.caption, color: theme.colors.textMuted },
   next: {
@@ -252,8 +220,10 @@ const styles = StyleSheet.create({
   },
   nextText: { ...theme.font.body, fontWeight: '700', color: theme.colors.bg },
   box: { position: 'absolute', borderWidth: 2, borderRadius: 6 },
-  boxLabel: { position: 'absolute', left: 0, top: 0, paddingHorizontal: 6, paddingVertical: 2, borderBottomRightRadius: 6 },
-  boxLabelText: { ...theme.font.caption, fontWeight: '700' },
+  boxLabel: { position: 'absolute', left: 0, top: 0, paddingHorizontal: 6, paddingVertical: 2, borderBottomRightRadius: 6, backgroundColor: theme.colors.accent },
+  boxLabelText: { ...theme.font.caption, fontWeight: '700', color: theme.colors.bg },
+  instructionsTitle: { ...theme.font.h2, color: theme.colors.text, marginBottom: theme.spacing.sm },
+  instructionsBody: { ...theme.font.body, color: theme.colors.text, lineHeight: 20 },
   button: {
     backgroundColor: theme.colors.accent,
     paddingVertical: 12,

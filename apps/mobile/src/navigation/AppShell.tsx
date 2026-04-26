@@ -18,7 +18,7 @@ export type RootStackParamList = {
   RoomDetail: { roomId: string };
   Camera: { mode: 'register' | 'repair-step'; sessionId?: string; roomId?: string };
   ApplianceDetail: { applianceId: string; taskId?: string; source?: 'home-upcoming' };
-  LintGuidedCamera: { applianceId: string; taskTitle: string; taskDescription: string | null };
+  LintGuidedCamera: { applianceId: string; taskId: string };
   ApplianceSave: {
     roomId: string;
     imageUrl: string;

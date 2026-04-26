@@ -52,7 +52,10 @@ export function ApplianceDetailScreen() {
           taskTitle,
           taskCategory: selectedTask?.category,
         });
-        nav.navigate('LintGuidedCamera', { applianceId: id, taskTitle, taskDescription });
+        if (!selectedTask?.id) {
+          throw new Error('Missing task id.');
+        }
+        nav.navigate('LintGuidedCamera', { applianceId: id, taskId: selectedTask.id });
       } else {
         const symptomText = [
           `Perform maintenance task: ${taskTitle}`,
