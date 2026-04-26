@@ -183,6 +183,8 @@ export class AppliancesService {
         brand: detection.brand,
         model: detection.model,
         confidence: detection.confidence,
+        categoryGuess: detection.categoryGuess ?? null,
+        broadCategory: detection.broadCategory ?? null,
       },
     };
   }

@@ -15,6 +15,7 @@ import { RepairModule } from './modules/repair/repair.module';
 import { VisionModule } from './modules/vision/vision.module';
 import { AiModule } from './modules/ai/ai.module';
 import { MediaModule } from './modules/media/media.module';
+import { VoiceModule } from './modules/voice/voice.module';
 import { QueuesModule } from './queues/queues.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
@@ -44,6 +45,7 @@ import { RequestLoggerMiddleware } from './common/middleware/request-logger.midd
     VisionModule,
     AiModule,
     MediaModule,
+    VoiceModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

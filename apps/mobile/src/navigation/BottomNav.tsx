@@ -40,12 +40,12 @@ export function BottomNav() {
         name="CameraEntry"
         component={CameraEntryScreen}
         options={{
-          title: 'Add',
+          title: 'Your Equipment',
           tabBarIcon: ({ color, focused, size }) => (
             <Ionicons
-              name={focused ? 'add-circle' : 'add-circle-outline'}
+              name={focused ? 'apps' : 'apps-outline'}
               color={color}
-              size={size ?? 24}
+              size={size ?? 22}
             />
           ),
         }}
@@ -54,10 +54,10 @@ export function BottomNav() {
         name="Schedule"
         component={ScheduleScreen}
         options={{
-          title: 'Schedule',
+          title: 'Plan',
           tabBarIcon: ({ color, focused, size }) => (
             <Ionicons
-              name={focused ? 'calendar' : 'calendar-outline'}
+              name={focused ? 'list' : 'list-outline'}
               color={color}
               size={size ?? 22}
             />

@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import {
   ApplianceType,
+  BroadCategory,
   type RepairPlanPayload,
   type RepairStateMachine,
 } from '@fixit/shared';
@@ -24,6 +25,10 @@ export interface ApplianceDetection {
   brand: string | null;
   model: string | null;
   confidence: number;
+  /** 1-3 word natural language description (e.g. "Coffee maker"). */
+  categoryGuess?: string | null;
+  /** Coarser bucket for items that don't fit the strict ApplianceType union. */
+  broadCategory?: BroadCategory | null;
 }
 
 export interface PhotoVerification {
@@ -246,6 +251,8 @@ export class AiService {
         brand: null,
         model: null,
         confidence: 0.0,
+        categoryGuess: null,
+        broadCategory: null,
       };
     }
 
@@ -283,6 +290,8 @@ export class AiService {
         brand: null,
         model: null,
         confidence: 0.0,
+        categoryGuess: null,
+        broadCategory: null,
       };
     }
 
@@ -302,12 +311,27 @@ export class AiService {
             .sort((a, b) => b.confidence - a.confidence)
             .slice(0, 3)
         : [{ type: parsed.type, confidence: clamp01(parsed.confidence ?? 0) }];
+
+    const rawGuess = (parsed as any).categoryGuess;
+    const categoryGuess =
+      typeof rawGuess === 'string' && rawGuess.trim().length > 0
+        ? rawGuess.trim().slice(0, 60)
+        : null;
+
+    const rawBroad = (parsed as any).broadCategory;
+    const broadCategory: BroadCategory | null =
+      typeof rawBroad === 'string' && rawBroad in BroadCategory
+        ? (rawBroad as BroadCategory)
+        : null;
+
     return {
       type: parsed.type,
       typeOptions: cleanedOptions,
       brand: parsed.brand ?? null,
       model: parsed.model ?? null,
       confidence: clamp01(parsed.confidence ?? 0),
+      categoryGuess,
+      broadCategory,
     };
   }
 
@@ -568,6 +592,91 @@ export class AiService {
       missing: Array.isArray(parsed.missing) ? parsed.missing : [],
       feedback: typeof parsed.feedback === 'string' ? parsed.feedback : '',
     };
+  }
+
+  /**
+   * Voice intent router. Takes plain text (from STT) and returns:
+   * - a user-facing reply
+   * - optional UI instructions for the mobile app
+   *
+   * If GEMINI_API_KEY is unset, this returns a simple stub response.
+   */
+  async voiceRouter(
+    userText: string,
+    history?: Array<{ role: 'user' | 'assistant'; text: string }>,
+  ): Promise<{ replyText: string; ui: { type: 'none' } | { type: 'toast'; text: string } }> {
+    const cleaned = (userText ?? '').trim();
+    if (!cleaned) {
+      return {
+        replyText: "I didn't catch that—try again.",
+        ui: { type: 'toast', text: 'No speech detected.' },
+      };
+    }
+
+    if (!this.client) {
+      return {
+        replyText: `Heard: "${cleaned}". (AI is stubbed until GEMINI_API_KEY is set.)`,
+        ui: { type: 'none' },
+      };
+    }
+
+    const system = [
+      'You are Fixit Fred, an appliance helper.',
+      'Classify the user request into one of intents: ADD_APPLIANCE, TROUBLESHOOT_EXISTING, GENERAL_QUESTION.',
+      'Return STRICT JSON with keys: intent, replyText.',
+      'replyText should be short and actionable (1-3 sentences).',
+    ].join('\n');
+
+    const { result: response } = await this.runWithFallback(
+      'voice-router',
+      this.plannerModels,
+      async (m) => {
+        const prior =
+          history && history.length
+            ? history
+                .slice(-8)
+                .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.text}`)
+                .join('\n')
+            : '';
+        return this.client!.models.generateContent({
+          model: m,
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  text:
+                    `${system}\n\n` +
+                    (prior ? `Conversation so far:\n${prior}\n\n` : '') +
+                    `User: ${cleaned}`,
+                },
+              ],
+            },
+          ],
+          config: { responseMimeType: 'application/json' },
+        });
+      },
+    );
+
+    const raw = extractText(response);
+    const parsed = safeJson<{ intent?: string; replyText?: string }>(raw);
+    const replyText =
+      parsed?.replyText?.trim() ||
+      raw.trim() ||
+      "Got it. Tell me the appliance type and what it's doing, and I'll guide you.";
+
+    return { replyText, ui: { type: 'none' } };
+  }
+}
+
+function safeJson<T>(s: string): T | null {
+  const start = s.indexOf('{');
+  const end = s.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    return JSON.parse(s.slice(start, end + 1)) as T;
+  } catch {
+    return null;
   }
 }
 

@@ -309,6 +309,70 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ imageUrl }),
     }),
+
+  async voiceAsk(
+    audio: { uri: string; mimeType: string; filename: string },
+    opts?: { history?: Array<{ role: 'user' | 'assistant'; text: string }> },
+  ) {
+    const token = await SecureStore.getItemAsync(ACCESS_KEY);
+    const form = new FormData();
+    form.append(
+      'file',
+      {
+        uri: audio.uri,
+        type: audio.mimeType,
+        name: audio.filename,
+      } as any,
+    );
+    if (opts?.history?.length) {
+      form.append('history', JSON.stringify(opts.history));
+    }
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${apiUrl}/voice/ask`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+        signal: ctrl.signal,
+      });
+      const text = await res.text();
+      const body = text ? safeJson(text) : undefined;
+      if (!res.ok) {
+        const errBody = (body ?? {}) as { message?: string | string[] };
+        const message = errBody.message ?? `Request failed with ${res.status}`;
+        throw new ApiError(
+          res.status,
+          Array.isArray(message) ? message.join(', ') : String(message),
+        );
+      }
+      return body as {
+        transcript: string;
+        replyText: string;
+        audioBase64: string | null;
+        ui: { type: 'none' } | { type: 'toast'; text: string };
+      };
+    } catch (e) {
+      if (ctrl.signal.aborted) {
+        throw new ApiError(0, `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s.`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  voiceAskText: (text: string, opts?: { history?: Array<{ role: 'user' | 'assistant'; text: string }> }) =>
+    request<{
+      transcript: string;
+      replyText: string;
+      audioBase64: string | null;
+      ui: { type: 'none' } | { type: 'toast'; text: string };
+    }>('/voice/ask-text', {
+      method: 'POST',
+      body: JSON.stringify({ text, history: opts?.history }),
+    }),
 };
 
 export async function uploadToSignedUrl(

@@ -10,6 +10,8 @@ import {
   Text,
   TextInput,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -97,20 +99,26 @@ export function ApplianceDetailScreen() {
       : a.upcomingTasks;
 
   return (
-    <ScrollView
+    <KeyboardAvoidingView
       style={styles.root}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={detail.isFetching}
-          onRefresh={() => detail.refetch()}
-          tintColor={theme.colors.accent}
-        />
-      }
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      {a.primaryImageUrl && (
-        <Image source={{ uri: a.primaryImageUrl }} style={styles.hero} />
-      )}
+      <ScrollView
+        style={styles.root}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={detail.isFetching}
+            onRefresh={() => detail.refetch()}
+            tintColor={theme.colors.accent}
+          />
+        }
+      >
+        {a.primaryImageUrl && (
+          <Image source={{ uri: a.primaryImageUrl }} style={styles.hero} />
+        )}
 
       <Text style={styles.title}>
         {a.nickname ?? a.type.replace(/_/g, ' ')}
@@ -185,7 +193,8 @@ export function ApplianceDetailScreen() {
           </ScrollView>
         </>
       )}
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

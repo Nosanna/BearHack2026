@@ -1,4 +1,9 @@
-import type { ApplianceType, TaskStatus, RepairStatus } from './enums';
+import type {
+  ApplianceType,
+  BroadCategory,
+  TaskStatus,
+  RepairStatus,
+} from './enums';
 import type { RepairState, StateId } from './state-machine';
 
 // ---- Auth ----
@@ -92,7 +97,23 @@ export interface AnalyzeApplianceFromImageResponse {
     type: ApplianceType;
     brand: string | null;
     model: string | null;
+    /**
+     * 0..1 — how confident the AI is in the `type` field above.
+     * Lower values indicate the AI cannot reliably place this in the
+     * supported {@link ApplianceType} enum.
+     */
     confidence: number;
+    /**
+     * Free-text 1-3 word description of what the AI thinks it sees
+     * (e.g. "Coffee maker", "Space heater", "Lamp"). Especially useful
+     * when `type` falls back to `OTHER` — gives the user a meaningful
+     * hint instead of just "OTHER".
+     */
+    categoryGuess?: string | null;
+    /**
+     * Coarser-grained bucket the device probably belongs to. Display-only.
+     */
+    broadCategory?: BroadCategory | null;
   };
 }
 

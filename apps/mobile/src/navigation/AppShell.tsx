@@ -15,13 +15,20 @@ import { theme } from '../theme';
 export type RootStackParamList = {
   Tabs: undefined;
   RoomDetail: { roomId: string };
-  ApplianceDetail: { applianceId: string; taskId?: string; source?: 'home-upcoming' };
   Camera: { mode: 'register' | 'repair-step'; sessionId?: string; roomId?: string };
+  ApplianceDetail: { applianceId: string; taskId?: string; source?: 'home-upcoming' };
   ApplianceSave: {
     roomId: string;
     imageUrl: string;
     typeOptions: Array<{ type: string; confidence: number }>;
-    suggested: { type: string; brand: string | null; model: string | null; confidence: number };
+    suggested: {
+      type: string;
+      brand: string | null;
+      model: string | null;
+      confidence: number;
+      categoryGuess?: string | null;
+      broadCategory?: string | null;
+    };
   };
   Assistant: { sessionId: string };
 };
@@ -67,7 +74,7 @@ export function AppShell() {
         <Stack.Screen
           name="RoomDetail"
           component={RoomDetailScreen}
-          options={{ headerShown: true, title: 'Room' }}
+          options={{ headerShown: true, title: 'Space' }}
         />
         <Stack.Screen
           name="ApplianceDetail"

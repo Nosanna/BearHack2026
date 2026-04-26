@@ -9,6 +9,8 @@ import {
   Text,
   TextInput,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -44,11 +46,12 @@ export function AssistantScreen() {
     staleTime: Infinity,
   });
 
-  const submitAnswer = async () => {
-    if (!answer.trim()) return;
+  const submitWithAnswer = async (raw: string) => {
+    const text = raw.trim();
+    if (!text) return;
     setBusy(true);
     try {
-      const r = await api.respond(sessionId, answer.trim());
+      const r = await api.respond(sessionId, text);
       qc.setQueryData(['repair-session', sessionId], r.session);
       setAnswer('');
       if (r.session.status !== 'ACTIVE') {
@@ -60,6 +63,8 @@ export function AssistantScreen() {
       setBusy(false);
     }
   };
+
+  const submitAnswer = () => submitWithAnswer(answer);
 
   if (session.isLoading || !session.data) {
     return (
@@ -74,105 +79,108 @@ export function AssistantScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.label}>Diagnosis</Text>
-        <Text style={styles.diagnosis}>{s.diagnosis}</Text>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text style={styles.label}>Diagnosis</Text>
+          <Text style={styles.diagnosis}>{s.diagnosis}</Text>
 
-        {s.safetyWarnings.length > 0 && (
-          <View style={styles.safetyBox}>
-            <Text style={styles.safetyTitle}>Safety</Text>
-            {s.safetyWarnings.map((w, i) => (
-              <Text key={i} style={styles.safetyItem}>• {w}</Text>
-            ))}
-          </View>
-        )}
+          {s.safetyWarnings.length > 0 && (
+            <View style={styles.safetyBox}>
+              <Text style={styles.safetyTitle}>Safety</Text>
+              {s.safetyWarnings.map((w, i) => (
+                <Text key={i} style={styles.safetyItem}>• {w}</Text>
+              ))}
+            </View>
+          )}
 
-        <Text style={styles.label}>Step</Text>
-        {cs.type === 'instruction' && (
-          <View style={styles.card}>
-            <Text style={styles.body}>{cs.text}</Text>
-            <Pressable
-              style={[styles.button, busy && styles.buttonDisabled]}
-              disabled={busy}
-              onPress={() => {
-                setAnswer('next');
-                submitAnswer();
-              }}
-            >
-              <Text style={styles.buttonText}>{busy ? 'Working…' : 'Done — next step'}</Text>
-            </Pressable>
-          </View>
-        )}
+          <Text style={styles.label}>Step</Text>
+          {cs.type === 'instruction' && (
+            <View style={styles.card}>
+              <Text style={styles.body}>{cs.text}</Text>
+              <Pressable
+                style={[styles.button, busy && styles.buttonDisabled]}
+                disabled={busy}
+                onPress={() => submitWithAnswer('next')}
+              >
+                <Text style={styles.buttonText}>{busy ? 'Working…' : 'Done — next step'}</Text>
+              </Pressable>
+            </View>
+          )}
 
-        {cs.type === 'question' && (
-          <View style={styles.card}>
-            <Text style={styles.body}>{cs.text}</Text>
-            {cs.branches?.length ? (
-              <View style={{ marginTop: theme.spacing.md }}>
-                {cs.branches.map((b) => (
+          {cs.type === 'question' && (
+            <View style={styles.card}>
+              <Text style={styles.body}>{cs.text}</Text>
+              {cs.branches?.length ? (
+                <View style={{ marginTop: theme.spacing.md }}>
+                  {cs.branches.map((b) => (
+                    <Pressable
+                      key={b.match}
+                      style={[styles.optionButton, busy && styles.buttonDisabled]}
+                      disabled={busy}
+                      onPress={() => submitWithAnswer(b.match)}
+                    >
+                      <Text style={styles.optionText}>{b.match}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : (
+                <>
+                  <TextInput
+                    placeholder="Type your answer"
+                    placeholderTextColor={theme.colors.textMuted}
+                    value={answer}
+                    onChangeText={setAnswer}
+                    style={styles.input}
+                    multiline
+                  />
                   <Pressable
-                    key={b.match}
-                    style={styles.optionButton}
-                    disabled={busy}
-                    onPress={() => {
-                      setAnswer(b.match);
-                      submitAnswer();
-                    }}
+                    style={[styles.button, (!answer.trim() || busy) && styles.buttonDisabled]}
+                    disabled={!answer.trim() || busy}
+                    onPress={submitAnswer}
                   >
-                    <Text style={styles.optionText}>{b.match}</Text>
+                    <Text style={styles.buttonText}>{busy ? 'Working…' : 'Continue'}</Text>
                   </Pressable>
-                ))}
-              </View>
-            ) : (
-              <>
-                <TextInput
-                  placeholder="Type your answer"
-                  placeholderTextColor={theme.colors.textMuted}
-                  value={answer}
-                  onChangeText={setAnswer}
-                  style={styles.input}
-                  multiline
-                />
-                <Pressable
-                  style={[styles.button, (!answer.trim() || busy) && styles.buttonDisabled]}
-                  disabled={!answer.trim() || busy}
-                  onPress={submitAnswer}
-                >
-                  <Text style={styles.buttonText}>{busy ? 'Working…' : 'Continue'}</Text>
-                </Pressable>
-              </>
-            )}
-          </View>
-        )}
+                </>
+              )}
+            </View>
+          )}
 
-        {cs.type === 'verify_photo' && (
-          <View style={styles.card}>
-            <Text style={styles.body}>{cs.text ?? 'Take a photo to verify the previous step.'}</Text>
-            <Text style={styles.muted}>
-              We need to see: {cs.expected_visual.join(', ')}
-            </Text>
-            <Pressable
-              style={styles.button}
-              onPress={() => nav.navigate('Camera', { mode: 'repair-step', sessionId })}
-            >
-              <Text style={styles.buttonText}>Open camera</Text>
-            </Pressable>
-          </View>
-        )}
+          {cs.type === 'verify_photo' && (
+            <View style={styles.card}>
+              <Text style={styles.body}>{cs.text ?? 'Take a photo to verify the previous step.'}</Text>
+              <Text style={styles.muted}>
+                We need to see: {cs.expected_visual.join(', ')}
+              </Text>
+              <Pressable
+                style={styles.button}
+                onPress={() => nav.navigate('Camera', { mode: 'repair-step', sessionId })}
+              >
+                <Text style={styles.buttonText}>Open camera</Text>
+              </Pressable>
+            </View>
+          )}
 
-        {cs.type === 'complete' && (
-          <View style={styles.card}>
-            <Text style={[styles.body, { color: theme.colors.success }]}>{cs.text}</Text>
-          </View>
-        )}
+          {cs.type === 'complete' && (
+            <View style={styles.card}>
+              <Text style={[styles.body, { color: theme.colors.success }]}>{cs.text}</Text>
+            </View>
+          )}
 
-        {cs.type === 'escalate' && (
-          <View style={styles.card}>
-            <Text style={[styles.body, { color: theme.colors.danger }]}>{cs.text}</Text>
-            <Text style={styles.muted}>Reason: {cs.reason}</Text>
-          </View>
-        )}
-      </ScrollView>
+          {cs.type === 'escalate' && (
+            <View style={styles.card}>
+              <Text style={[styles.body, { color: theme.colors.danger }]}>{cs.text}</Text>
+              <Text style={styles.muted}>Reason: {cs.reason}</Text>
+            </View>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

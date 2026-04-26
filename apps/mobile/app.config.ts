@@ -1,7 +1,7 @@
 import { ExpoConfig } from 'expo/config';
 
 const config: ExpoConfig = {
-  name: 'Fixit Fred',
+  name: 'Isaac - Fixit Fred',
   slug: 'fixit-fred',
   scheme: 'fixitfred',
   version: '0.1.0',

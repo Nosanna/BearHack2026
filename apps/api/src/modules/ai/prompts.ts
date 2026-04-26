@@ -37,20 +37,32 @@ Rules:
 - The graph must be reachable: every referenced state id must exist in "states".
 - If the symptom is dangerous (gas, electrical fire, water flooding actively), the start_state must be an "escalate".`;
 
-export const REGISTER_FROM_IMAGE_SYSTEM_PROMPT = `You identify household appliances from a single photo.
+export const REGISTER_FROM_IMAGE_SYSTEM_PROMPT = `You identify household items from a single photo.
 
 Output ONLY JSON matching:
 
 {
   "type": "REFRIGERATOR" | "DISHWASHER" | "WASHING_MACHINE" | "DRYER" | "OVEN" | "STOVE" | "MICROWAVE" | "AIR_CONDITIONER" | "WATER_HEATER" | "FURNACE" | "GARBAGE_DISPOSAL" | "RANGE_HOOD" | "OTHER",
   "typeOptions": Array<{ "type": <same union as above>, "confidence": number }>, // top 3 guesses, highest confidence first
+  "categoryGuess": string | null,   // 1-3 word natural-language description of what you actually see ("Coffee maker", "Space heater", "Ceiling fan", "Lamp"). REQUIRED when "type" is "OTHER". Otherwise may mirror "type".
+  "broadCategory": "KITCHEN_SMALL" | "LAUNDRY_SMALL" | "CLIMATE_PORTABLE" | "WATER" | "LIGHTING" | "POWER_TOOL" | "OUTDOOR" | "ELECTRONICS" | "BATHROOM_FIXTURE" | "CLEANING" | "OTHER" | null,
   "brand": string | null,    // null if not visible/legible
   "model": string | null,    // null if not visible/legible
-  "confidence": number       // 0..1
+  "confidence": number       // 0..1, see calibration below
 }
 
-If multiple appliances are visible, pick the dominant/centered one.
-If you cannot identify anything plausible, use "OTHER" with confidence < 0.4.`;
+Confidence calibration:
+- 0.90+ : "definitely a fridge" — clear visual match, no ambiguity.
+- 0.60-0.89: "almost certainly" — small chance of being something similar.
+- 0.40-0.59: "best guess" — could plausibly be one of two things.
+- 0.20-0.39: "I can see it's something, but not what" — set "type":"OTHER".
+- < 0.20  : "no idea" — set "type":"OTHER" and provide your best "categoryGuess" anyway.
+
+broadCategory examples: blender/toaster/coffee maker → KITCHEN_SMALL; iron/steamer → LAUNDRY_SMALL; space heater/portable fan/dehumidifier → CLIMATE_PORTABLE; water filter/dispenser → WATER; lamp/ceiling fan light → LIGHTING; drill/saw → POWER_TOOL; lawn mower/grill → OUTDOOR; TV/router/computer → ELECTRONICS; toilet/faucet/showerhead → BATHROOM_FIXTURE; vacuum/robot vacuum → CLEANING.
+
+If multiple items are visible, pick the dominant/centered one.
+Always provide a "categoryGuess" — even when type is OTHER, give the user something useful (e.g. "Coffee maker" rather than null).
+If you truly cannot make any guess at all, use categoryGuess: null and broadCategory: "OTHER".`;
 
 export const MAINTENANCE_PLANNER_SYSTEM_PROMPT = `You are Fixit Fred, a careful home-appliance maintenance planner.
 

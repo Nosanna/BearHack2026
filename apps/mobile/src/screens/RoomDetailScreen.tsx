@@ -64,7 +64,7 @@ export function RoomDetailScreen() {
 
   const confirmDeleteAppliance = (a: ApplianceDto) => {
     Alert.alert(
-      'Remove appliance?',
+      'Remove equipment?',
       `This will delete "${displayName(a)}" and all of its photos, repair plans, and tasks. This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -74,7 +74,7 @@ export function RoomDetailScreen() {
           onPress: () =>
             deleteAppliance.mutate(a.id, {
               onError: (e) =>
-                Alert.alert('Could not remove appliance', (e as Error).message),
+                Alert.alert('Could not remove equipment', (e as Error).message),
             }),
         },
       ],
@@ -84,12 +84,12 @@ export function RoomDetailScreen() {
   const confirmDeleteRoom = () => {
     if ((room.data?.applianceCount ?? 0) > 0) {
       Alert.alert(
-        'Remove appliances first',
-        'Remove every appliance in this room before deleting the room itself.',
+        'Remove equipment first',
+        'Remove every piece of equipment in this space before deleting the space itself.',
       );
       return;
     }
-    Alert.alert('Delete room?', `"${room.data?.name}" will be removed.`, [
+    Alert.alert('Delete space?', `"${room.data?.name}" will be removed.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -97,7 +97,7 @@ export function RoomDetailScreen() {
         onPress: () =>
           deleteRoom.mutate(undefined, {
             onError: (e) =>
-              Alert.alert('Could not delete room', (e as Error).message),
+              Alert.alert('Could not delete space', (e as Error).message),
           }),
       },
     ]);
@@ -120,11 +120,11 @@ export function RoomDetailScreen() {
       >
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.title}>{room.data?.name ?? 'Room'}</Text>
+            <Text style={styles.title}>{room.data?.name ?? 'Space'}</Text>
             <Text style={styles.subtitle}>
               {(appliances.data?.length ?? 0) === 0
-                ? 'No appliances yet.'
-                : `${appliances.data!.length} appliance${
+                ? 'No equipment yet.'
+                : `${appliances.data!.length} item${
                     appliances.data!.length === 1 ? '' : 's'
                   }`}
             </Text>
@@ -134,7 +134,7 @@ export function RoomDetailScreen() {
             style={styles.headerAction}
             hitSlop={8}
           >
-            <Text style={styles.headerActionText}>Delete room</Text>
+            <Text style={styles.headerActionText}>Delete space</Text>
           </Pressable>
         </View>
 
@@ -208,7 +208,7 @@ export function RoomDetailScreen() {
 
         {!isLoading && (appliances.data?.length ?? 0) === 0 && (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No appliances in this room</Text>
+            <Text style={styles.emptyTitle}>No equipment in this space</Text>
             <Text style={styles.emptyBody}>
               Tap the button below to take a photo and we'll identify it for you.
             </Text>
@@ -221,7 +221,7 @@ export function RoomDetailScreen() {
             nav.navigate('Camera', { mode: 'register', roomId })
           }
         >
-          <Text style={styles.addButtonText}>+ Add appliance to this room</Text>
+          <Text style={styles.addButtonText}>+ Add equipment to this space</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
