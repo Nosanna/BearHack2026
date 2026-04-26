@@ -12,6 +12,7 @@ import {
   type RepairStateMachine,
 } from '@fixit/shared';
 import {
+  MAINTENANCE_PLANNER_SYSTEM_PROMPT,
   PLANNER_SYSTEM_PROMPT,
   REGISTER_FROM_IMAGE_SYSTEM_PROMPT,
   VERIFY_PHOTO_SYSTEM_PROMPT,
@@ -29,6 +30,20 @@ export interface PhotoVerification {
   found: string[];
   missing: string[];
   feedback: string;
+}
+
+export interface MaintenanceTaskTemplate {
+  title: string;
+  description: string;
+  cadenceDays: number;
+  estimatedMinutes: number;
+  safetyWarnings: string[];
+  whyItMatters: string;
+}
+
+export interface MaintenancePlan {
+  tasks: MaintenanceTaskTemplate[];
+  modelName: string;
 }
 
 /** Default fallback chains for each task. Highest-quality first; each
@@ -256,6 +271,76 @@ export class AiService {
     };
   }
 
+  // ---- Planner: maintenance plan ----
+
+  /**
+   * Generate a list of recurring maintenance tasks tailored to an appliance.
+   * Uses the planner-model fallback chain. Throws on total failure so callers
+   * can decide whether to fall back to a static template.
+   */
+  async generateMaintenancePlan(input: {
+    applianceType: ApplianceType;
+    brand: string | null;
+    model: string | null;
+    installedAt: Date | null;
+  }): Promise<MaintenancePlan> {
+    if (!this.client) {
+      throw new InternalServerErrorException(
+        'GEMINI_API_KEY not set — caller should fall back to static template.',
+      );
+    }
+
+    const userText = [
+      `Appliance type: ${input.applianceType}`,
+      input.brand ? `Brand: ${input.brand}` : null,
+      input.model ? `Model: ${input.model}` : null,
+      input.installedAt
+        ? `Installed: ${input.installedAt.toISOString().slice(0, 10)}`
+        : null,
+      'Generate the maintenance plan per the JSON contract.',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const { result: response, model } = await this.runWithFallback(
+      'maintenance-plan',
+      this.plannerModels,
+      (m) =>
+        this.client!.models.generateContent({
+          model: m,
+          contents: [{ role: 'user', parts: [{ text: userText }] }],
+          config: {
+            systemInstruction: MAINTENANCE_PLANNER_SYSTEM_PROMPT,
+            responseMimeType: 'application/json',
+            temperature: 0.3,
+          },
+        }),
+    );
+
+    const raw = extractText(response);
+    const parsed = safeJsonParse<{ tasks: unknown[] }>(raw);
+    if (!parsed || !Array.isArray(parsed.tasks)) {
+      this.logger.error(
+        `Maintenance planner returned non-JSON: ${raw.slice(0, 500)}`,
+      );
+      throw new InternalServerErrorException(
+        'Maintenance planner returned invalid JSON.',
+      );
+    }
+
+    const tasks = parsed.tasks
+      .map((t) => sanitizeMaintenanceTask(t))
+      .filter((t): t is MaintenanceTaskTemplate => t !== null);
+
+    if (tasks.length === 0) {
+      throw new InternalServerErrorException(
+        'Maintenance planner returned no usable tasks.',
+      );
+    }
+
+    return { tasks, modelName: model };
+  }
+
   // ---- Vision: repair-step photo verification ----
 
   async verifyPhoto(input: {
@@ -400,6 +485,48 @@ function safeJsonParse<T>(input: string): T | null {
 function clamp01(n: number) {
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(1, n));
+}
+
+/**
+ * Coerce one item from the model's `tasks[]` into a strict
+ * MaintenanceTaskTemplate. Returns null if the row is malformed enough
+ * that we'd rather drop it than risk inserting garbage into the DB.
+ */
+function sanitizeMaintenanceTask(raw: unknown): MaintenanceTaskTemplate | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const title = typeof r.title === 'string' ? r.title.trim() : '';
+  if (title.length === 0 || title.length > 120) return null;
+
+  const cadenceDays = Number(r.cadenceDays);
+  if (!Number.isFinite(cadenceDays) || cadenceDays < 1 || cadenceDays > 3650) {
+    return null;
+  }
+
+  const estimatedMinutes = Number(r.estimatedMinutes);
+  const description =
+    typeof r.description === 'string' ? r.description.trim().slice(0, 1000) : '';
+  const whyItMatters =
+    typeof r.whyItMatters === 'string' ? r.whyItMatters.trim().slice(0, 500) : '';
+  const safetyWarnings = Array.isArray(r.safetyWarnings)
+    ? r.safetyWarnings
+        .filter((s): s is string => typeof s === 'string')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0 && s.length <= 240)
+        .slice(0, 5)
+    : [];
+
+  return {
+    title,
+    description,
+    cadenceDays: Math.round(cadenceDays),
+    estimatedMinutes:
+      Number.isFinite(estimatedMinutes) && estimatedMinutes > 0
+        ? Math.round(estimatedMinutes)
+        : 15,
+    safetyWarnings,
+    whyItMatters,
+  };
 }
 
 function isValidStateMachine(sm: RepairStateMachine | undefined): boolean {

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { toMaintenanceTaskDto } from '../../common/mappers/maintenance-task.mapper';
 import type { DashboardHomeResponse, MaintenanceTaskDto, RoomDto, UserDto } from '@fixit/shared';
 
 @Injectable()
@@ -50,17 +51,9 @@ export class DashboardService {
       createdAt: r.createdAt.toISOString(),
     }));
 
-    const taskDtos: MaintenanceTaskDto[] = tasks.map((t) => ({
-      id: t.id,
-      applianceId: t.applianceId,
-      applianceNickname: t.appliance.nickname,
-      applianceType: t.appliance.type,
-      title: t.title,
-      description: t.description,
-      dueDate: t.dueDate.toISOString(),
-      status: t.status,
-      estimatedMinutes: t.estimatedMinutes,
-    }));
+    const taskDtos: MaintenanceTaskDto[] = tasks.map((t) =>
+      toMaintenanceTaskDto(t, t.appliance),
+    );
 
     const userDto: UserDto = {
       id: user.id,

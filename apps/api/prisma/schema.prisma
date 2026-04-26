@@ -161,6 +161,13 @@ model MaintenanceTask {
   estimatedMinutes Int?
   /// Optional cadence in days for recurring tasks.
   cadenceDays      Int?
+  /// Concise safety reminders specific to this task (gas, electrical, water, etc.).
+  safetyWarnings   String[]   @default([])
+  /// Short, user-facing reason this task matters (shown under the title).
+  whyItMatters     String?
+  /// Where this task came from — gates UI affordances and analytics.
+  /// Values: "ai" | "template" | "manual"
+  source           String     @default("template")
   completedAt      DateTime?
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt

@@ -15,7 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { api } from '../api/client';
-import { TaskCard } from '../components/TaskCard';
+import { SwipeableTaskCard } from '../components/TaskCard';
 import { theme } from '../theme';
 import type { RootStackParamList } from '../navigation/AppShell';
 
@@ -115,9 +115,19 @@ export function ApplianceDetailScreen() {
 
       <Text style={styles.sectionTitle}>Upcoming maintenance</Text>
       {a.upcomingTasks.length === 0 ? (
-        <Text style={styles.empty}>No tasks scheduled — generate a maintenance plan from the dashboard.</Text>
+        <Text style={styles.empty}>
+          No tasks yet — we generate a plan automatically when you register an
+          appliance. Pull to refresh in a few seconds.
+        </Text>
       ) : (
-        a.upcomingTasks.map((t) => <TaskCard key={t.id} task={t} />)
+        <>
+          {a.upcomingTasks.map((t) => (
+            <SwipeableTaskCard key={t.id} task={t} />
+          ))}
+          <Text style={styles.hint}>
+            Swipe right to mark done · swipe left to snooze 7 days
+          </Text>
+        </>
       )}
 
       <Text style={styles.sectionTitle}>Photos</Text>
@@ -168,6 +178,12 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.6 },
   buttonText: { ...theme.font.body, fontWeight: '600', color: theme.colors.bg },
   empty: { ...theme.font.caption, color: theme.colors.textMuted },
+  hint: {
+    ...theme.font.caption,
+    color: theme.colors.textMuted,
+    marginTop: theme.spacing.sm,
+    fontStyle: 'italic',
+  },
   error: { ...theme.font.body, color: theme.colors.danger },
   thumb: {
     width: 120,
