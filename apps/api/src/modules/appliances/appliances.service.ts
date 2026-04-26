@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -6,6 +6,7 @@ import { AiService } from '../ai/ai.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { QUEUE_NAMES } from '../../queues/queues.constants';
 import { toMaintenanceTaskDto } from '../../common/mappers/maintenance-task.mapper';
+import { MediaService } from '../media/media.service';
 import type {
   ApplianceDetailDto,
   ApplianceDto,
@@ -16,6 +17,7 @@ import type {
   RegisterFromImageResponse,
 } from '@fixit/shared';
 import type { Appliance } from '@prisma/client';
+import { TaskStatus } from '@prisma/client';
 
 @Injectable()
 export class AppliancesService {
@@ -25,21 +27,36 @@ export class AppliancesService {
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly rooms: RoomsService,
+    private readonly media: MediaService,
     @InjectQueue(QUEUE_NAMES.GENERATE_MAINTENANCE_PLAN)
     private readonly maintenanceQueue: Queue,
   ) {}
 
   async listForUser(userId: string, roomId?: string): Promise<ApplianceDto[]> {
-    const items = await this.prisma.appliance.findMany({
+    const [items, taskCounts] = await Promise.all([
+      this.prisma.appliance.findMany({
       where: { ownerId: userId, ...(roomId ? { roomId } : {}) },
       orderBy: { createdAt: 'desc' },
       include: {
         images: { where: { isPrimary: true }, take: 1, orderBy: { createdAt: 'desc' } },
       },
-    });
-    return items.map((a) =>
-      this.toDto(a, a.images[0]?.url ?? null),
-    );
+      }),
+      this.prisma.maintenanceTask.groupBy({
+        by: ['applianceId'],
+        where: {
+          ownerId: userId,
+          status: { in: ['PENDING', 'IN_PROGRESS', 'OVERDUE'] },
+          ...(roomId ? { appliance: { roomId } } : {}),
+        },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const applianceToCount = new Map(taskCounts.map((r) => [r.applianceId, r._count._all]));
+    return items.map((a) => ({
+      ...this.toDto(a, a.images[0]?.url ?? null),
+      openMaintenanceCount: applianceToCount.get(a.id) ?? 0,
+    }));
   }
 
   async remove(userId: string, applianceId: string): Promise<void> {
@@ -101,7 +118,8 @@ export class AppliancesService {
   ): Promise<RegisterFromImageResponse> {
     await this.rooms.assertOwnership(userId, args.roomId);
 
-    const detection = await this.ai.detectApplianceFromImage(args.imageUrl);
+    const object = await this.ai.topObjectFromGoogleVision(args.imageUrl);
+    const detection = await this.ai.detectApplianceFromImage(object, args.imageUrl);
 
     const appliance = await this.prisma.appliance.create({
       data: {
@@ -155,7 +173,8 @@ export class AppliancesService {
   ): Promise<AnalyzeApplianceFromImageResponse> {
     // No persistence — just return detection + top-3 type options.
     void userId;
-    const detection = await this.ai.detectApplianceFromImage(args.imageUrl);
+    const object = await this.ai.topObjectFromGoogleVision(args.imageUrl);
+    const detection = await this.ai.detectApplianceFromImage(object, args.imageUrl);
     return {
       typeOptions:
         detection.typeOptions?.slice(0, 3) ?? [{ type: detection.type, confidence: detection.confidence }],
@@ -177,6 +196,14 @@ export class AppliancesService {
       brand: string | null;
       model: string | null;
       nickname?: string;
+      suggestedTasks?: Array<{
+        title: string;
+        description: string;
+        cadenceDays: 1 | 7 | 30;
+        estimatedMinutes: number;
+        safetyWarnings: string[];
+        whyItMatters: string;
+      }>;
     },
   ): Promise<CreateApplianceResponse> {
     await this.rooms.assertOwnership(userId, args.roomId);
@@ -202,6 +229,28 @@ export class AppliancesService {
       include: { images: true },
     });
 
+    if (args.suggestedTasks?.length) {
+      const now = Date.now();
+      const rows = args.suggestedTasks
+        .filter((t) => t && t.title && t.description)
+        .map((t) => ({
+          ownerId: userId,
+          applianceId: appliance.id,
+          title: t.title.slice(0, 120),
+          description: t.description,
+          dueDate: new Date(now + t.cadenceDays * 24 * 60 * 60 * 1000),
+          status: TaskStatus.PENDING,
+          estimatedMinutes: t.estimatedMinutes,
+          cadenceDays: t.cadenceDays,
+          safetyWarnings: t.safetyWarnings,
+          whyItMatters: t.whyItMatters,
+          source: 'ai' as const,
+        }));
+      if (rows.length) {
+        await this.prisma.maintenanceTask.createMany({ data: rows });
+      }
+    }
+
     try {
       await this.maintenanceQueue.add(
         'generate-maintenance-plan',
@@ -220,6 +269,38 @@ export class AppliancesService {
     }
 
     return { appliance: this.toDto(appliance, args.imageUrl) };
+  }
+
+  async getSuggestedMaintenanceTasks(
+    userId: string,
+    args: {
+      applianceType: ApplianceType;
+      brand: string;
+      modelId?: string;
+      imageUrl?: string;
+    },
+  ): Promise<{ tasks: any[] }> {
+    const hasModel = !!args.modelId && args.modelId.trim().length > 0;
+    if (!hasModel && !args.imageUrl) {
+      throw new BadRequestException('imageUrl is required when modelId is not provided.');
+    }
+
+    // Retry a couple times if Gemini returns invalid JSON/contracts.
+    let lastError: string | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const tasks = await this.ai.getSuggestedMaintenanceTasks({
+          applianceType: args.applianceType,
+          brand: args.brand,
+          modelId: hasModel ? args.modelId : undefined,
+          imageUrl: hasModel ? undefined : args.imageUrl,
+        });
+        return { tasks };
+      } catch (e) {
+        lastError = (e as Error)?.message ?? String(e);
+      }
+    }
+    throw new BadRequestException(lastError ?? 'Failed to fetch suggested maintenance tasks.');
   }
 
   async assertOwnership(userId: string, applianceId: string): Promise<void> {

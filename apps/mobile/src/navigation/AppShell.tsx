@@ -15,7 +15,7 @@ import { theme } from '../theme';
 export type RootStackParamList = {
   Tabs: undefined;
   RoomDetail: { roomId: string };
-  ApplianceDetail: { applianceId: string };
+  ApplianceDetail: { applianceId: string; taskId?: string; source?: 'home-upcoming' };
   Camera: { mode: 'register' | 'repair-step'; sessionId?: string; roomId?: string };
   ApplianceSave: {
     roomId: string;

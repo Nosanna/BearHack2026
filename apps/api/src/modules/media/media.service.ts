@@ -165,6 +165,66 @@ export class MediaService {
     };
   }
 
+  async ingestExternal(params: {
+    userId: string;
+    kind: 'manual-image' | 'manual-pdf';
+    sourceUrl: string;
+    baseUrl: string;
+  }): Promise<{ publicUrl: string; key: string; contentType: string; size: number }> {
+    const res = await fetch(params.sourceUrl);
+    if (!res.ok) {
+      throw new BadRequestException(
+        `Failed to download external media (${res.status})`,
+      );
+    }
+    const contentType = (res.headers.get('content-type') ?? '').split(';')[0]!.trim();
+    const body = Buffer.from(await res.arrayBuffer());
+    if (!body.length) throw new BadRequestException('Empty external media.');
+
+    const expected = params.kind === 'manual-pdf' ? 'application/pdf' : 'image/';
+    if (params.kind === 'manual-pdf') {
+      if (contentType !== 'application/pdf') {
+        throw new BadRequestException(`Expected PDF, got ${contentType || 'unknown'}`);
+      }
+    } else {
+      if (!contentType.startsWith('image/')) {
+        throw new BadRequestException(`Expected image, got ${contentType || 'unknown'}`);
+      }
+    }
+
+    const ext = mimeToExt(contentType);
+    const key = `manual/${params.userId}/${Date.now()}-${randomUUID()}${ext}`;
+
+    if (this.localMode) {
+      const fullPath = this.resolveLocalPath(key);
+      await fs.mkdir(dirname(fullPath), { recursive: true });
+      await fs.writeFile(fullPath, body);
+      const cleanBase = params.baseUrl.replace(/\/$/, '');
+      return {
+        publicUrl: `${cleanBase}/media/local/${key}`,
+        key,
+        contentType,
+        size: body.length,
+      };
+    }
+
+    await this.s3!.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ContentType: contentType,
+        ACL: 'public-read',
+        Body: body,
+      }),
+    );
+    return {
+      publicUrl: this.publicUrlFor(key),
+      key,
+      contentType,
+      size: body.length,
+    };
+  }
+
   publicUrlFor(key: string): string {
     if (this.forcePathStyle) {
       return `${this.endpoint.replace(/\/$/, '')}/${this.bucket}/${key}`;
@@ -191,6 +251,7 @@ export class MediaService {
     if (lower.endsWith('.png')) return 'image/png';
     if (lower.endsWith('.webp')) return 'image/webp';
     if (lower.endsWith('.heic')) return 'image/heic';
+    if (lower.endsWith('.pdf')) return 'application/pdf';
     return 'application/octet-stream';
   }
 
@@ -213,6 +274,8 @@ function mimeToExt(mime: string): string {
       return '.webp';
     case 'image/heic':
       return '.heic';
+    case 'application/pdf':
+      return '.pdf';
     default:
       return '';
   }

@@ -1,12 +1,23 @@
-import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import type { RouteProp } from '@react-navigation/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { api } from '../api/client';
 import { theme } from '../theme';
 import type { RootStackParamList } from '../navigation/AppShell';
-import type { ApplianceType } from '@fixit/shared';
+import type { ApplianceType, MaintenanceTaskDto, SuggestedMaintenanceTask } from '@fixit/shared';
+import { TaskCard } from '../components/TaskCard';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'ApplianceSave'>;
@@ -29,6 +40,60 @@ export function ApplianceSaveScreen() {
   const [model, setModel] = useState(suggested.model ?? '');
   const [nickname, setNickname] = useState('');
   const [saving, setSaving] = useState(false);
+  const [suggestedTasks, setSuggestedTasks] = useState<SuggestedMaintenanceTask[] | null>(null);
+  const [tasksLoading, setTasksLoading] = useState(false);
+
+  useEffect(() => {
+    const b = brand.trim();
+    const m = model.trim();
+    if (!b) {
+      setSuggestedTasks(null);
+      return;
+    }
+    setTasksLoading(true);
+    const t = setTimeout(() => {
+      api
+        .getSuggestedMaintenanceTasks({
+          applianceType: type,
+          brand: b,
+          modelId: m ? m : undefined,
+          imageUrl: m ? undefined : imageUrl,
+        })
+        .then((res) => {
+          setSuggestedTasks(res.tasks);
+        })
+        .catch(() => {
+          setSuggestedTasks(null);
+        })
+        .finally(() => setTasksLoading(false));
+    }, 3000);
+    return () => {
+      clearTimeout(t);
+      setTasksLoading(false);
+    };
+  }, [type, brand, model]);
+
+  const previewTasks: MaintenanceTaskDto[] = useMemo(() => {
+    const base = {
+      applianceId: 'preview',
+      applianceNickname: nickname.trim() ? nickname.trim() : null,
+      applianceType: type,
+      status: 'PENDING' as const,
+    };
+    return (suggestedTasks ?? []).map((t, idx) => ({
+      id: `suggested-${idx}-${t.cadenceDays}`,
+      ...base,
+      title: t.title,
+      description: t.description,
+      dueDate: new Date(Date.now() + t.cadenceDays * 24 * 60 * 60 * 1000).toISOString(),
+      estimatedMinutes: t.estimatedMinutes,
+      cadenceDays: t.cadenceDays,
+      whyItMatters: t.whyItMatters,
+      safetyWarnings: t.safetyWarnings,
+      source: 'ai',
+      createdAt: new Date().toISOString(),
+    }));
+  }, [suggestedTasks, nickname, type]);
 
   const onSave = async () => {
     if (saving) return;
@@ -41,6 +106,7 @@ export function ApplianceSaveScreen() {
         brand: brand.trim() ? brand.trim() : null,
         model: model.trim() ? model.trim() : null,
         nickname: nickname.trim() ? nickname.trim() : undefined,
+        suggestedTasks: suggestedTasks ?? undefined,
       });
       nav.replace('ApplianceDetail', { applianceId: res.appliance.id });
     } catch (e) {
@@ -52,7 +118,11 @@ export function ApplianceSaveScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.title}>Confirm appliance</Text>
 
         <Text style={styles.label}>Appliance type</Text>
@@ -103,6 +173,24 @@ export function ApplianceSaveScreen() {
           autoCapitalize="words"
         />
 
+        <Text style={styles.label}>User manuals</Text>
+        {tasksLoading ? (
+          <View style={styles.manualsLoading}>
+            <ActivityIndicator color={theme.colors.accent} />
+            <Text style={styles.manualsLoadingText}>Finding maintenance tasks…</Text>
+          </View>
+        ) : previewTasks.length ? (
+          <View style={{ gap: theme.spacing.sm }}>
+            {previewTasks.map((t) => (
+              <TaskCard key={t.id} task={t} />
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.manualsEmpty}>
+            Enter a brand (and optionally a model). If you don&apos;t provide a model, we&apos;ll search using your photo.
+          </Text>
+        )}
+
         <Pressable style={[styles.saveBtn, saving && { opacity: 0.7 }]} onPress={onSave} disabled={saving}>
           {saving ? (
             <ActivityIndicator color={theme.colors.bg} />
@@ -110,13 +198,14 @@ export function ApplianceSaveScreen() {
             <Text style={styles.saveText}>Save</Text>
           )}
         </Pressable>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.bg },
+  scroll: { flex: 1 },
   content: { padding: theme.spacing.lg },
   title: { ...theme.font.title, color: theme.colors.text, marginBottom: theme.spacing.lg },
   label: { ...theme.font.caption, color: theme.colors.textMuted, marginTop: theme.spacing.md, marginBottom: 6 },
@@ -147,5 +236,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveText: { ...theme.font.body, fontWeight: '700', color: theme.colors.bg },
+  manualsLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+  },
+  manualsLoadingText: { ...theme.font.caption, color: theme.colors.textMuted },
+  manualsEmpty: { ...theme.font.caption, color: theme.colors.textMuted },
 });
 

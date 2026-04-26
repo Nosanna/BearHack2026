@@ -120,6 +120,10 @@ model Appliance {
   type        ApplianceType
   brand       String?
   model       String?
+  /// Selected user manual metadata (chosen during registration).
+  manualModelId   String?
+  manualImageUrl  String?
+  manualUrl       String?
   nickname    String?
   installedAt DateTime?
   createdAt   DateTime      @default(now())

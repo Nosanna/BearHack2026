@@ -21,7 +21,20 @@ export class DashboardService {
       this.prisma.room.findMany({
         where: { ownerId: userId },
         orderBy: { createdAt: 'asc' },
-        include: { _count: { select: { appliances: true } } },
+        include: {
+          _count: { select: { appliances: true } },
+          appliances: {
+            take: 1,
+            orderBy: { createdAt: 'desc' },
+            include: {
+              images: {
+                where: { isPrimary: true },
+                take: 1,
+                orderBy: { createdAt: 'desc' },
+              },
+            },
+          },
+        },
       }),
       this.prisma.maintenanceTask.findMany({
         where: {
@@ -44,12 +57,37 @@ export class DashboardService {
       }),
     ]);
 
-    const roomDtos: RoomDto[] = rooms.map((r) => ({
-      id: r.id,
-      name: r.name,
-      applianceCount: r._count.appliances,
-      createdAt: r.createdAt.toISOString(),
-    }));
+    const openTaskAppliances = await this.prisma.maintenanceTask.findMany({
+      where: {
+        ownerId: userId,
+        status: { in: ['PENDING', 'IN_PROGRESS', 'OVERDUE'] },
+      },
+      select: {
+        applianceId: true,
+        appliance: { select: { roomId: true } },
+      },
+    });
+    const roomToApplianceIds = new Map<string, Set<string>>();
+    for (const row of openTaskAppliances) {
+      const roomId = row.appliance.roomId;
+      const set = roomToApplianceIds.get(roomId) ?? new Set<string>();
+      set.add(row.applianceId);
+      roomToApplianceIds.set(roomId, set);
+    }
+
+    const roomDtos: RoomDto[] = rooms.map((r) => {
+      const preview = r.appliances[0]?.images[0]?.url ?? null;
+      const appliancesWithIssues = roomToApplianceIds.get(r.id)?.size ?? 0;
+      const openMaintenanceCount = appliancesWithIssues;
+      return {
+        id: r.id,
+        name: r.name,
+        applianceCount: r._count.appliances,
+        previewImageUrl: preview,
+        openMaintenanceCount,
+        createdAt: r.createdAt.toISOString(),
+      };
+    });
 
     const taskDtos: MaintenanceTaskDto[] = tasks.map((t) =>
       toMaintenanceTaskDto(t, t.appliance),

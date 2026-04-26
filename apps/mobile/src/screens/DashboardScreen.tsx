@@ -107,13 +107,16 @@ export function DashboardScreen() {
         )}
 
         <Section title="Rooms">
-          {(home.data?.rooms ?? []).map((r) => (
-            <RoomCard
-              key={r.id}
-              room={r}
-              onPress={() => nav.navigate('RoomDetail', { roomId: r.id })}
-            />
-          ))}
+          <View style={styles.roomGrid}>
+            {(home.data?.rooms ?? []).map((r) => (
+              <View key={r.id} style={styles.roomCell}>
+                <RoomCard
+                  room={r}
+                  onPress={() => nav.navigate('RoomDetail', { roomId: r.id })}
+                />
+              </View>
+            ))}
+          </View>
           {home.data?.rooms?.length === 0 && (
             <Text style={styles.empty}>No rooms yet. Tap “Add” below to register your first appliance.</Text>
           )}
@@ -124,7 +127,13 @@ export function DashboardScreen() {
             <SwipeableTaskCard
               key={t.id}
               task={t}
-              onPress={() => nav.navigate('ApplianceDetail', { applianceId: t.applianceId })}
+              onPress={() =>
+                nav.navigate('ApplianceDetail', {
+                  applianceId: t.applianceId,
+                  taskId: t.id,
+                  source: 'home-upcoming',
+                })
+              }
             />
           ))}
           {home.data?.upcomingTasks?.length === 0 && (
@@ -160,9 +169,9 @@ const styles = StyleSheet.create({
   hello: { ...theme.font.title, color: theme.colors.text },
   subhead: { ...theme.font.caption, color: theme.colors.textMuted, marginTop: 2 },
   headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.md,
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: theme.spacing.xs,
   },
   headerLink: { ...theme.font.caption, color: theme.colors.warning },
   headerLinkDisabled: { color: theme.colors.textMuted },
@@ -171,6 +180,16 @@ const styles = StyleSheet.create({
     ...theme.font.h2,
     color: theme.colors.text,
     marginBottom: theme.spacing.md,
+  },
+  roomGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -theme.spacing.sm / 2,
+  },
+  roomCell: {
+    width: '50%',
+    paddingHorizontal: theme.spacing.sm / 2,
+    paddingBottom: theme.spacing.sm,
   },
   empty: { ...theme.font.caption, color: theme.colors.textMuted },
   hint: {

@@ -29,6 +29,10 @@ export interface RoomDto {
   id: string;
   name: string;
   applianceCount: number;
+  /** Any appliance image in this room (for UI preview). */
+  previewImageUrl?: string | null;
+  /** Count of outstanding maintenance tasks for appliances in this room. */
+  openMaintenanceCount?: number;
   createdAt: string;
 }
 
@@ -46,6 +50,8 @@ export interface ApplianceDto {
   nickname: string | null;
   installedAt: string | null;
   primaryImageUrl: string | null;
+  /** Count of outstanding maintenance tasks for this appliance. */
+  openMaintenanceCount?: number;
   createdAt: string;
 }
 
@@ -97,10 +103,31 @@ export interface CreateApplianceRequest {
   brand: string | null;
   model: string | null;
   nickname?: string;
+  suggestedTasks?: SuggestedMaintenanceTask[];
 }
 
 export interface CreateApplianceResponse {
   appliance: ApplianceDto;
+}
+
+export type SuggestedMaintenanceTask = {
+  title: string;
+  description: string;
+  cadenceDays: 1 | 7 | 30;
+  estimatedMinutes: number;
+  safetyWarnings: string[];
+  whyItMatters: string;
+};
+
+export interface GetSuggestedMaintenanceTasksRequest {
+  applianceType: ApplianceType;
+  brand: string;
+  modelId?: string;
+  imageUrl?: string;
+}
+
+export interface GetSuggestedMaintenanceTasksResponse {
+  tasks: SuggestedMaintenanceTask[];
 }
 
 // ---- Dashboard ----

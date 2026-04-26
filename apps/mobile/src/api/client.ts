@@ -9,6 +9,8 @@ import type {
   CreateApplianceRequest,
   CreateApplianceResponse,
   DashboardHomeResponse,
+  GetSuggestedMaintenanceTasksRequest,
+  GetSuggestedMaintenanceTasksResponse,
   LoginResponse,
   RegisterFromImageRequest,
   RegisterFromImageResponse,
@@ -249,6 +251,11 @@ export const api = {
     }),
   createAppliance: (body: CreateApplianceRequest) =>
     request<CreateApplianceResponse>('/appliances', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  getSuggestedMaintenanceTasks: (body: GetSuggestedMaintenanceTasksRequest) =>
+    request<GetSuggestedMaintenanceTasksResponse>('/appliances/suggested-maintenance-tasks', {
       method: 'POST',
       body: JSON.stringify(body),
     }),

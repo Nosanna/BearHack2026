@@ -26,6 +26,8 @@ export function ApplianceDetailScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
   const id = route.params.applianceId;
+  const selectedTaskId = route.params.taskId;
+  const fromHomeUpcoming = route.params.source === 'home-upcoming';
 
   const detail = useQuery({
     queryKey: ['appliance', id],
@@ -34,6 +36,25 @@ export function ApplianceDetailScreen() {
 
   const [symptom, setSymptom] = useState('');
   const [starting, setStarting] = useState(false);
+
+  const startMaintenance = async (taskTitle: string, taskDescription: string | null) => {
+    setStarting(true);
+    try {
+      const symptomText = [
+        `Perform maintenance task: ${taskTitle}`,
+        taskDescription ? `Details: ${taskDescription}` : null,
+        'Make this a safe step-by-step maintenance checklist as a state machine.',
+      ]
+        .filter(Boolean)
+        .join('\n');
+      const session = await api.startRepair({ applianceId: id, symptom: symptomText });
+      nav.navigate('Assistant', { sessionId: session.id });
+    } catch (e) {
+      Alert.alert('Could not start maintenance', (e as Error).message);
+    } finally {
+      setStarting(false);
+    }
+  };
 
   const startRepair = async () => {
     if (!symptom.trim()) {
@@ -68,6 +89,12 @@ export function ApplianceDetailScreen() {
   }
 
   const a = detail.data;
+  const selectedTask =
+    selectedTaskId ? a.upcomingTasks.find((t) => t.id === selectedTaskId) : undefined;
+  const otherTasks =
+    fromHomeUpcoming && selectedTask
+      ? a.upcomingTasks.filter((t) => t.id !== selectedTask.id)
+      : a.upcomingTasks;
 
   return (
     <ScrollView
@@ -92,50 +119,72 @@ export function ApplianceDetailScreen() {
         {[a.brand, a.model].filter(Boolean).join(' · ') || a.type.replace(/_/g, ' ')}
       </Text>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Need a repair?</Text>
-        <TextInput
-          placeholder="Describe the symptom (e.g. it's leaking water from the door)"
-          placeholderTextColor={theme.colors.textMuted}
-          value={symptom}
-          onChangeText={setSymptom}
-          style={styles.input}
-          multiline
-        />
-        <Pressable
-          style={[styles.button, (!symptom.trim() || starting) && styles.buttonDisabled]}
-          disabled={!symptom.trim() || starting}
-          onPress={startRepair}
-        >
-          <Text style={styles.buttonText}>
-            {starting ? 'Generating plan…' : 'Start guided repair'}
+      {fromHomeUpcoming && selectedTask ? (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Start maintenance</Text>
+          <Text style={styles.maintenanceTitle} numberOfLines={2}>
+            {selectedTask.title}
           </Text>
-        </Pressable>
-      </View>
-
-      <Text style={styles.sectionTitle}>Upcoming maintenance</Text>
-      {a.upcomingTasks.length === 0 ? (
-        <Text style={styles.empty}>
-          No tasks yet — we generate a plan automatically when you register an
-          appliance. Pull to refresh in a few seconds.
-        </Text>
+          {selectedTask.description ? (
+            <Text style={styles.maintenanceBody} numberOfLines={4}>
+              {selectedTask.description}
+            </Text>
+          ) : null}
+          <Pressable
+            style={[styles.button, starting && styles.buttonDisabled]}
+            disabled={starting}
+            onPress={() => startMaintenance(selectedTask.title, selectedTask.description)}
+          >
+            <Text style={styles.buttonText}>
+              {starting ? 'Generating steps…' : 'Start guided maintenance'}
+            </Text>
+          </Pressable>
+        </View>
       ) : (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Need a repair?</Text>
+          <TextInput
+            placeholder="Describe the symptom (e.g. it's leaking water from the door)"
+            placeholderTextColor={theme.colors.textMuted}
+            value={symptom}
+            onChangeText={setSymptom}
+            style={styles.input}
+            multiline
+          />
+          <Pressable
+            style={[styles.button, (!symptom.trim() || starting) && styles.buttonDisabled]}
+            disabled={!symptom.trim() || starting}
+            onPress={startRepair}
+          >
+            <Text style={styles.buttonText}>
+              {starting ? 'Generating plan…' : 'Start guided repair'}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
+      {otherTasks.length > 0 ? (
         <>
-          {a.upcomingTasks.map((t) => (
+          <Text style={styles.sectionTitle}>Other maintenance</Text>
+          {otherTasks.map((t) => (
             <SwipeableTaskCard key={t.id} task={t} />
           ))}
           <Text style={styles.hint}>
             Swipe right to mark done · swipe left to snooze 7 days
           </Text>
         </>
-      )}
+      ) : null}
 
-      <Text style={styles.sectionTitle}>Photos</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        {a.images.map((img) => (
-          <Image key={img.id} source={{ uri: img.url }} style={styles.thumb} />
-        ))}
-      </ScrollView>
+      {!fromHomeUpcoming && (
+        <>
+          <Text style={styles.sectionTitle}>Photos</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {a.images.map((img) => (
+              <Image key={img.id} source={{ uri: img.url }} style={styles.thumb} />
+            ))}
+          </ScrollView>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -177,6 +226,8 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { ...theme.font.body, fontWeight: '600', color: theme.colors.bg },
+  maintenanceTitle: { ...theme.font.body, color: theme.colors.text, marginBottom: 6 },
+  maintenanceBody: { ...theme.font.caption, color: theme.colors.textMuted, marginBottom: theme.spacing.md },
   empty: { ...theme.font.caption, color: theme.colors.textMuted },
   hint: {
     ...theme.font.caption,

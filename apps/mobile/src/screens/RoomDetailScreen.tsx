@@ -145,56 +145,64 @@ export function RoomDetailScreen() {
         )}
 
         {(appliances.data ?? []).map((a) => (
-          <View key={a.id} style={styles.card}>
-            <Pressable
-              onPress={() =>
-                nav.navigate('ApplianceDetail', { applianceId: a.id })
-              }
-              style={styles.cardBody}
-            >
-              {a.primaryImageUrl ? (
-                <Image
-                  source={{ uri: a.primaryImageUrl }}
-                  style={styles.thumb}
-                />
-              ) : (
-                <View style={[styles.thumb, styles.thumbFallback]}>
-                  <Text style={styles.thumbFallbackText}>
-                    {firstChar(displayName(a))}
-                  </Text>
-                </View>
-              )}
-              <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
-                <Text style={styles.cardTitle}>{displayName(a)}</Text>
-                <Text style={styles.cardSubtitle}>
-                  {[a.brand, a.model].filter(Boolean).join(' · ') ||
-                    a.type.replace(/_/g, ' ')}
-                </Text>
-              </View>
-            </Pressable>
-
-            <View style={styles.cardActions}>
+          <View key={a.id} style={styles.cardWrap}>
+            <View style={styles.card}>
               <Pressable
-                style={[styles.actionButton, styles.actionPrimary]}
                 onPress={() =>
                   nav.navigate('ApplianceDetail', { applianceId: a.id })
                 }
+                style={styles.cardBody}
               >
-                <Text style={styles.actionPrimaryText}>Report a problem</Text>
+                {a.primaryImageUrl ? (
+                  <Image
+                    source={{ uri: a.primaryImageUrl }}
+                    style={styles.thumb}
+                  />
+                ) : (
+                  <View style={[styles.thumb, styles.thumbFallback]}>
+                    <Text style={styles.thumbFallbackText}>
+                      {firstChar(displayName(a))}
+                    </Text>
+                  </View>
+                )}
+                <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
+                  <Text style={styles.cardTitle}>{displayName(a)}</Text>
+                  <Text style={styles.cardSubtitle}>
+                    {[a.brand, a.model].filter(Boolean).join(' · ') ||
+                      a.type.replace(/_/g, ' ')}
+                  </Text>
+                </View>
               </Pressable>
-              <Pressable
-                style={[styles.actionButton, styles.actionDanger]}
-                onPress={() => confirmDeleteAppliance(a)}
-                disabled={deleteAppliance.isPending}
-              >
-                <Text style={styles.actionDangerText}>
-                  {deleteAppliance.isPending &&
-                  deleteAppliance.variables === a.id
-                    ? 'Removing…'
-                    : 'Remove'}
-                </Text>
-              </Pressable>
+
+              <View style={styles.cardActions}>
+                <Pressable
+                  style={[styles.actionButton, styles.actionPrimary]}
+                  onPress={() =>
+                    nav.navigate('ApplianceDetail', { applianceId: a.id })
+                  }
+                >
+                  <Text style={styles.actionPrimaryText}>Report a problem</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.actionButton, styles.actionDanger]}
+                  onPress={() => confirmDeleteAppliance(a)}
+                  disabled={deleteAppliance.isPending}
+                >
+                  <Text style={styles.actionDangerText}>
+                    {deleteAppliance.isPending &&
+                    deleteAppliance.variables === a.id
+                      ? 'Removing…'
+                      : 'Remove'}
+                  </Text>
+                </Pressable>
+              </View>
             </View>
+
+            {(a.openMaintenanceCount ?? 0) > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{a.openMaintenanceCount}</Text>
+              </View>
+            )}
           </View>
         ))}
 
@@ -257,10 +265,10 @@ const styles = StyleSheet.create({
     ...theme.font.caption,
     color: theme.colors.danger,
   },
+  cardWrap: { position: 'relative', marginBottom: theme.spacing.md },
   card: {
     backgroundColor: theme.colors.card,
     borderRadius: theme.radius.lg,
-    marginBottom: theme.spacing.md,
     overflow: 'hidden',
   },
   cardBody: {
@@ -282,6 +290,19 @@ const styles = StyleSheet.create({
     ...theme.font.h2,
     color: theme.colors.textMuted,
   },
+  badge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 6,
+    borderRadius: 11,
+    backgroundColor: theme.colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: { ...theme.font.caption, color: theme.colors.text, fontWeight: '800' },
   cardTitle: {
     ...theme.font.h2,
     color: theme.colors.text,

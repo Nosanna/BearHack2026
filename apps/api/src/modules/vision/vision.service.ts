@@ -10,7 +10,7 @@ export class VisionService {
   constructor(private readonly ai: AiService) {}
 
   detectAppliance(imageUrl: string) {
-    return this.ai.detectApplianceFromImage(imageUrl);
+    return this.ai.topObjectFromGoogleVision(imageUrl).then((obj) => this.ai.detectApplianceFromImage(obj, imageUrl));
   }
 
   verifyPhoto(args: { imageUrl: string; expectedVisual: string[] }) {

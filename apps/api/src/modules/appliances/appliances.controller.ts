@@ -47,6 +47,34 @@ class CreateApplianceDto {
   @IsString()
   @MaxLength(60)
   nickname?: string;
+
+  @IsOptional()
+  suggestedTasks?: Array<{
+    title: string;
+    description: string;
+    cadenceDays: 1 | 7 | 30;
+    estimatedMinutes: number;
+    safetyWarnings: string[];
+    whyItMatters: string;
+  }>;
+}
+
+class GetSuggestedTasksDto {
+  @IsString()
+  applianceType!: ApplianceType;
+
+  @IsString()
+  @MinLength(1)
+  brand!: string;
+
+  @IsOptional()
+  @IsString()
+  modelId?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsUrl({ require_tld: false })
+  imageUrl?: string;
 }
 
 @ApiTags('appliances')
@@ -92,7 +120,16 @@ export class AppliancesController {
       brand: body.brand ?? null,
       model: body.model ?? null,
       nickname: body.nickname,
+      suggestedTasks: body.suggestedTasks,
     });
+  }
+
+  @Post('suggested-maintenance-tasks')
+  @ApiOperation({
+    summary: 'Return daily/weekly/monthly maintenance task suggestions via Gemini.',
+  })
+  suggestedMaintenanceTasks(@CurrentUser() user: AuthUser, @Body() body: GetSuggestedTasksDto) {
+    return this.appliances.getSuggestedMaintenanceTasks(user.id, body);
   }
 
   @Get(':id/detail')

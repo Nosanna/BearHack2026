@@ -47,6 +47,15 @@ export interface MaintenancePlan {
   modelName: string;
 }
 
+export interface SuggestedMaintenanceTask {
+  title: string;
+  description: string;
+  cadenceDays: 1 | 7 | 30;
+  estimatedMinutes: number;
+  safetyWarnings: string[];
+  whyItMatters: string;
+}
+
 /** Default fallback chains for each task. Highest-quality first; each
  * subsequent model has a different/larger free-tier daily quota so we can
  * keep serving traffic if the primary is exhausted. */
@@ -229,7 +238,7 @@ export class AiService {
 
   // ---- Vision: appliance recognition ----
 
-  async detectApplianceFromImage(imageUrl: string): Promise<ApplianceDetection> {
+  async detectApplianceFromImage(object: string, imageUrl: string): Promise<ApplianceDetection> {
     if (!this.client) {
       return {
         type: ApplianceType.OTHER,
@@ -252,7 +261,7 @@ export class AiService {
               role: 'user',
               parts: [
                 inline,
-                { text: 'Identify the appliance in this photo per the JSON contract.' },
+                { text: `Identify the ${object} in this photo per the JSON contract.` },
               ],
             },
           ],
@@ -300,6 +309,135 @@ export class AiService {
       model: parsed.model ?? null,
       confidence: clamp01(parsed.confidence ?? 0),
     };
+  }
+
+  async topObjectFromGoogleVision(imageUrl: string): Promise<string> {
+    const key = this.config.get<string>('GOOGLE_VISION_API_KEY');
+    if (!key) return 'appliance';
+    try {
+      const res = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(key)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: [
+            {
+              image: { source: { imageUri: imageUrl } },
+              features: [
+                { type: 'OBJECT_LOCALIZATION', maxResults: 10 },
+                { type: 'LABEL_DETECTION', maxResults: 10 },
+              ],
+            },
+          ],
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as any;
+      const r0 = json?.responses?.[0];
+      const objs: Array<{ name?: string; score?: number }> = r0?.localizedObjectAnnotations ?? [];
+      const labels: Array<{ description?: string; score?: number }> = r0?.labelAnnotations ?? [];
+      const topObj = objs
+        .filter((o) => typeof o?.score === 'number' && !!o?.name)
+        .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
+      if (topObj?.name) return String(topObj.name);
+      const topLabel = labels
+        .filter((l) => typeof l?.score === 'number' && !!l?.description)
+        .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
+      if (topLabel?.description) return String(topLabel.description);
+      return 'appliance';
+    } catch {
+      return 'appliance';
+    }
+  }
+
+  async getSuggestedMaintenanceTasks(input: {
+    applianceType: ApplianceType;
+    brand: string;
+    modelId?: string;
+    imageUrl?: string;
+  }): Promise<SuggestedMaintenanceTask[]> {
+    if (!this.client) {
+      throw new InternalServerErrorException('GEMINI_API_KEY not set.');
+    }
+    const subject =
+      input.modelId && input.modelId.trim()
+        ? `${input.brand} ${input.modelId} ${input.applianceType}`
+        : `${input.brand} ${input.applianceType}`;
+
+    const prompt =
+      `Return daily, weekly, and monthly maintenance tasks for the ${subject}.\n` +
+      `These tasks must be homeowner-safe and specific to appliance maintenance.\n` +
+      `You MUST output ONLY valid JSON in this exact format:\n` +
+      `[` +
+      `{` +
+      `"title": "",` +
+      `"description": "",` +
+      `"cadenceDays": 1 | 7 | 30,` +
+      `"estimatedMinutes": number,` +
+      `"safetyWarnings": string[],` +
+      `"whyItMatters": ""` +
+      `}` +
+      `]\n` +
+      `Rules:\n` +
+      `- Return exactly 3 tasks: one with cadenceDays=1, one with cadenceDays=7, one with cadenceDays=30.\n` +
+      `- Keep titles 3–8 words.\n` +
+      `- safetyWarnings must be actionable and may be empty.\n`;
+
+    const inline = input.imageUrl ? await fetchImageAsInlinePart(input.imageUrl) : null;
+
+    const { result: response } = await this.runWithFallback(
+      'suggest-maintenance-tasks',
+      this.plannerModels,
+      (m) =>
+        this.client!.models.generateContent({
+          model: m,
+          contents: [
+            {
+              role: 'user',
+              parts: inline ? [inline, { text: prompt }] : [{ text: prompt }],
+            },
+          ],
+          config: {
+            responseMimeType: 'application/json',
+            temperature: 0.2,
+          },
+        }),
+    );
+
+    const raw = extractText(response);
+    const parsed = safeJsonParse<unknown>(raw);
+    if (!Array.isArray(parsed)) {
+      this.logger.warn(`Task suggestions returned non-array JSON: ${raw.slice(0, 200)}`);
+      throw new InternalServerErrorException('Task suggestion returned invalid JSON.');
+    }
+    const cleaned = parsed
+      .filter((x): x is any => !!x && typeof x === 'object')
+      .map((x) => ({
+        title: String((x as any).title ?? '').trim(),
+        description: String((x as any).description ?? '').trim(),
+        cadenceDays: Number((x as any).cadenceDays ?? 0) as 1 | 7 | 30,
+        estimatedMinutes: Number((x as any).estimatedMinutes ?? 0),
+        safetyWarnings: Array.isArray((x as any).safetyWarnings)
+          ? (x as any).safetyWarnings.map((s: any) => String(s)).filter(Boolean)
+          : [],
+        whyItMatters: String((x as any).whyItMatters ?? '').trim(),
+      }))
+      .filter(
+        (t) =>
+          t.title &&
+          t.description &&
+          (t.cadenceDays === 1 || t.cadenceDays === 7 || t.cadenceDays === 30) &&
+          Number.isFinite(t.estimatedMinutes) &&
+          t.estimatedMinutes > 0 &&
+          t.whyItMatters,
+      );
+
+    // Ensure we have 1/7/30 specifically; if not, fail fast so caller can retry.
+    const byCadence = new Map<number, SuggestedMaintenanceTask>();
+    for (const t of cleaned) if (!byCadence.has(t.cadenceDays)) byCadence.set(t.cadenceDays, t);
+    const out = [byCadence.get(1), byCadence.get(7), byCadence.get(30)].filter(Boolean) as SuggestedMaintenanceTask[];
+    if (out.length !== 3) {
+      throw new InternalServerErrorException('Task suggestion missing required cadences (1/7/30).');
+    }
+    return out;
   }
 
   // ---- Planner: maintenance plan ----
