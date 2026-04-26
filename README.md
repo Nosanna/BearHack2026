@@ -1,11 +1,16 @@
-# Fixit Fred
+# Home Hero
 
-AI-powered home appliance repair and maintenance assistant.
+AI-powered home equipment repair and maintenance assistant.
 
-- Snap a photo of an appliance — we identify it and add it to your home.
+- Snap a photo of an item — we identify it and add it to your home.
 - Describe a symptom — Gemini generates a safe step-by-step repair plan as a state machine.
 - Each step is either an instruction, a question, or a "verify by photo" gate the vision model checks before letting you proceed.
-- Recurring maintenance tasks are auto-generated per appliance type and surfaced on a schedule.
+- Recurring maintenance tasks are auto-generated per item type and surfaced on a schedule.
+
+> Note: the npm/pnpm workspace packages are still named `@fixit/*` and the Expo
+> `slug`/`bundleIdentifier` are still `fixit-fred` / `app.fixit.fred` so existing
+> EAS builds, sign-in tokens, and installs keep working. Only the user-facing
+> product name has changed.
 
 ## Stack
 

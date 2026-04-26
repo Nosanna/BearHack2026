@@ -2,7 +2,7 @@
   "name": "@fixit/api",
   "version": "0.1.0",
   "private": true,
-  "description": "Fixit Fred API — NestJS + Prisma + Redis (BullMQ) + Gemini.",
+  "description": "Home Hero API — NestJS + Prisma + Redis (BullMQ) + Gemini.",
   "main": "dist/main.js",
   "scripts": {
     "build": "nest build",

@@ -19,6 +19,7 @@ import { api } from '../api/client';
 import { theme } from '../theme';
 import type { RootStackParamList } from '../navigation/AppShell';
 import type { RepairSessionDto } from '@fixit/shared';
+import { StepDiagram } from '../components/StepDiagram';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Assistant'>;
@@ -45,6 +46,17 @@ export function AssistantScreen() {
     },
     staleTime: Infinity,
   });
+
+  // Pulled separately so the StepDiagram can show the right device shape.
+  // Cheap GET; cached and shared with ApplianceDetailScreen.
+  const applianceId = session.data?.applianceId;
+  const appliance = useQuery({
+    queryKey: ['appliance-detail', applianceId],
+    queryFn: () => api.applianceDetail(applianceId as string),
+    enabled: !!applianceId,
+    staleTime: 5 * 60 * 1000,
+  });
+  const applianceType = appliance.data?.type ?? null;
 
   const submitWithAnswer = async (raw: string) => {
     const text = raw.trim();
@@ -104,6 +116,7 @@ export function AssistantScreen() {
           {cs.type === 'instruction' && (
             <View style={styles.card}>
               <Text style={styles.body}>{cs.text}</Text>
+              <StepDiagram applianceType={applianceType} stepText={cs.text} />
               <Pressable
                 style={[styles.button, busy && styles.buttonDisabled]}
                 disabled={busy}
@@ -117,6 +130,7 @@ export function AssistantScreen() {
           {cs.type === 'question' && (
             <View style={styles.card}>
               <Text style={styles.body}>{cs.text}</Text>
+              <StepDiagram applianceType={applianceType} stepText={cs.text} />
               {cs.branches?.length ? (
                 <View style={{ marginTop: theme.spacing.md }}>
                   {cs.branches.map((b) => (
@@ -155,6 +169,10 @@ export function AssistantScreen() {
           {cs.type === 'verify_photo' && (
             <View style={styles.card}>
               <Text style={styles.body}>{cs.text ?? 'Take a photo to verify the previous step.'}</Text>
+              <StepDiagram
+                applianceType={applianceType}
+                stepText={cs.text ?? `Photograph ${cs.expected_visual.join(', ')}`}
+              />
               <Text style={styles.muted}>
                 We need to see: {cs.expected_visual.join(', ')}
               </Text>

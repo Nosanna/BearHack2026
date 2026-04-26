@@ -623,7 +623,7 @@ export class AiService {
     }
 
     const system = [
-      'You are Fixit Fred, an appliance helper.',
+      'You are Home Hero, a home equipment helper.',
       'Classify the user request into one of intents: ADD_APPLIANCE, TROUBLESHOOT_EXISTING, GENERAL_QUESTION.',
       'Return STRICT JSON with keys: intent, replyText.',
       'replyText should be short and actionable (1-3 sentences).',

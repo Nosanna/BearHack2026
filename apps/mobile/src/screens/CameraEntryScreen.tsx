@@ -209,8 +209,8 @@ export function CameraEntryScreen() {
                 </Text>
                 <Text style={styles.roomMeta}>
                   {r.applianceCount === 0
-                    ? 'No appliances yet'
-                    : `${r.applianceCount} appliance${r.applianceCount === 1 ? '' : 's'}`}
+                    ? 'No equipment yet'
+                    : `${r.applianceCount} item${r.applianceCount === 1 ? '' : 's'}`}
                 </Text>
               </View>
 
