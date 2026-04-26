@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { LoginScreen } from '../screens/LoginScreen';
 import { ApplianceDetailScreen } from '../screens/ApplianceDetailScreen';
 import { CameraScreen } from '../screens/CameraScreen';
+import { ApplianceSaveScreen } from '../screens/ApplianceSaveScreen';
 import { AssistantScreen } from '../screens/AssistantScreen';
 import { RoomDetailScreen } from '../screens/RoomDetailScreen';
 import { BottomNav } from './BottomNav';
@@ -16,6 +17,12 @@ export type RootStackParamList = {
   RoomDetail: { roomId: string };
   ApplianceDetail: { applianceId: string };
   Camera: { mode: 'register' | 'repair-step'; sessionId?: string; roomId?: string };
+  ApplianceSave: {
+    roomId: string;
+    imageUrl: string;
+    typeOptions: Array<{ type: string; confidence: number }>;
+    suggested: { type: string; brand: string | null; model: string | null; confidence: number };
+  };
   Assistant: { sessionId: string };
 };
 
@@ -71,6 +78,11 @@ export function AppShell() {
           name="Camera"
           component={CameraScreen}
           options={{ headerShown: true, title: 'Camera' }}
+        />
+        <Stack.Screen
+          name="ApplianceSave"
+          component={ApplianceSaveScreen}
+          options={{ headerShown: true, title: 'Save appliance' }}
         />
         <Stack.Screen
           name="Assistant"

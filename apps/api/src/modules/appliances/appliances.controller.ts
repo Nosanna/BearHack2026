@@ -12,6 +12,42 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
 import { AppliancesService } from './appliances.service';
 import { RegisterFromImageDto } from './dto/register-from-image.dto';
+import { IsOptional, IsString, IsUrl, MaxLength, MinLength } from 'class-validator';
+import { ApplianceType } from '@fixit/shared';
+
+class AnalyzeFromImageDto {
+  @IsString()
+  @IsUrl({ require_tld: false })
+  imageUrl!: string;
+}
+
+class CreateApplianceDto {
+  @IsString()
+  @MinLength(1)
+  roomId!: string;
+
+  @IsString()
+  @IsUrl({ require_tld: false })
+  imageUrl!: string;
+
+  @IsString()
+  type!: ApplianceType;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  brand?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  model?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  nickname?: string;
+}
 
 @ApiTags('appliances')
 @ApiBearerAuth()
@@ -34,6 +70,29 @@ export class AppliancesController {
     @Body() body: RegisterFromImageDto,
   ) {
     return this.appliances.registerFromImage(user.id, body);
+  }
+
+  @Post('analyze-from-image')
+  @ApiOperation({
+    summary: 'Analyze an appliance photo and return 3 type options + suggested brand/model (no persistence).',
+  })
+  analyzeFromImage(@CurrentUser() user: AuthUser, @Body() body: AnalyzeFromImageDto) {
+    return this.appliances.analyzeFromImage(user.id, body);
+  }
+
+  @Post()
+  @ApiOperation({
+    summary: 'Create an appliance from user-selected type and editable model info.',
+  })
+  create(@CurrentUser() user: AuthUser, @Body() body: CreateApplianceDto) {
+    return this.appliances.createAppliance(user.id, {
+      roomId: body.roomId,
+      imageUrl: body.imageUrl,
+      type: body.type,
+      brand: body.brand ?? null,
+      model: body.model ?? null,
+      nickname: body.nickname,
+    });
   }
 
   @Get(':id/detail')

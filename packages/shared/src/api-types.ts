@@ -72,6 +72,37 @@ export interface RegisterFromImageResponse {
   };
 }
 
+// ---- Appliance scanner (analyze + save) ----
+export interface AnalyzeApplianceFromImageRequest {
+  /** Public URL the API can fetch (typically after S3 upload). */
+  imageUrl: string;
+}
+
+export interface AnalyzeApplianceFromImageResponse {
+  /** Three best type guesses (highest confidence first). */
+  typeOptions: Array<{ type: ApplianceType; confidence: number }>;
+  /** Gemini-derived best guess for brand/model (user can edit). */
+  suggested: {
+    type: ApplianceType;
+    brand: string | null;
+    model: string | null;
+    confidence: number;
+  };
+}
+
+export interface CreateApplianceRequest {
+  roomId: string;
+  imageUrl: string;
+  type: ApplianceType;
+  brand: string | null;
+  model: string | null;
+  nickname?: string;
+}
+
+export interface CreateApplianceResponse {
+  appliance: ApplianceDto;
+}
+
 // ---- Dashboard ----
 export interface DashboardHomeResponse {
   user: UserDto;

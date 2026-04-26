@@ -9,6 +9,9 @@ import { toMaintenanceTaskDto } from '../../common/mappers/maintenance-task.mapp
 import type {
   ApplianceDetailDto,
   ApplianceDto,
+  ApplianceType,
+  AnalyzeApplianceFromImageResponse,
+  CreateApplianceResponse,
   MaintenanceTaskDto,
   RegisterFromImageResponse,
 } from '@fixit/shared';
@@ -144,6 +147,79 @@ export class AppliancesService {
       appliance: this.toDto(appliance, args.imageUrl),
       detected: detection,
     };
+  }
+
+  async analyzeFromImage(
+    userId: string,
+    args: { imageUrl: string },
+  ): Promise<AnalyzeApplianceFromImageResponse> {
+    // No persistence — just return detection + top-3 type options.
+    void userId;
+    const detection = await this.ai.detectApplianceFromImage(args.imageUrl);
+    return {
+      typeOptions:
+        detection.typeOptions?.slice(0, 3) ?? [{ type: detection.type, confidence: detection.confidence }],
+      suggested: {
+        type: detection.type,
+        brand: detection.brand,
+        model: detection.model,
+        confidence: detection.confidence,
+      },
+    };
+  }
+
+  async createAppliance(
+    userId: string,
+    args: {
+      roomId: string;
+      imageUrl: string;
+      type: ApplianceType;
+      brand: string | null;
+      model: string | null;
+      nickname?: string;
+    },
+  ): Promise<CreateApplianceResponse> {
+    await this.rooms.assertOwnership(userId, args.roomId);
+
+    const appliance = await this.prisma.appliance.create({
+      data: {
+        ownerId: userId,
+        roomId: args.roomId,
+        type: args.type,
+        brand: args.brand,
+        model: args.model,
+        nickname: args.nickname ?? null,
+        images: {
+          create: [
+            {
+              key: extractS3Key(args.imageUrl),
+              url: args.imageUrl,
+              isPrimary: true,
+            },
+          ],
+        },
+      },
+      include: { images: true },
+    });
+
+    try {
+      await this.maintenanceQueue.add(
+        'generate-maintenance-plan',
+        { userId, applianceId: appliance.id },
+        {
+          jobId: `plan:${appliance.id}`,
+          removeOnComplete: 100,
+          removeOnFail: 50,
+          attempts: 2,
+        },
+      );
+    } catch (e) {
+      this.logger.warn(
+        `Failed to enqueue maintenance plan for appliance ${appliance.id}: ${(e as Error).message}`,
+      );
+    }
+
+    return { appliance: this.toDto(appliance, args.imageUrl) };
   }
 
   async assertOwnership(userId: string, applianceId: string): Promise<void> {

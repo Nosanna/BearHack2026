@@ -43,6 +43,7 @@ Output ONLY JSON matching:
 
 {
   "type": "REFRIGERATOR" | "DISHWASHER" | "WASHING_MACHINE" | "DRYER" | "OVEN" | "STOVE" | "MICROWAVE" | "AIR_CONDITIONER" | "WATER_HEATER" | "FURNACE" | "GARBAGE_DISPOSAL" | "RANGE_HOOD" | "OTHER",
+  "typeOptions": Array<{ "type": <same union as above>, "confidence": number }>, // top 3 guesses, highest confidence first
   "brand": string | null,    // null if not visible/legible
   "model": string | null,    // null if not visible/legible
   "confidence": number       // 0..1

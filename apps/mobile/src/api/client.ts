@@ -3,7 +3,11 @@ import * as SecureStore from 'expo-secure-store';
 import type {
   ApplianceDetailDto,
   ApplianceDto,
+  AnalyzeApplianceFromImageRequest,
+  AnalyzeApplianceFromImageResponse,
   CompleteTaskResponse,
+  CreateApplianceRequest,
+  CreateApplianceResponse,
   DashboardHomeResponse,
   LoginResponse,
   RegisterFromImageRequest,
@@ -235,6 +239,16 @@ export const api = {
     request<ApplianceDetailDto>(`/appliances/${id}/detail`),
   registerFromImage: (body: RegisterFromImageRequest) =>
     request<RegisterFromImageResponse>('/appliances/register-from-image', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  analyzeApplianceFromImage: (body: AnalyzeApplianceFromImageRequest) =>
+    request<AnalyzeApplianceFromImageResponse>('/appliances/analyze-from-image', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  createAppliance: (body: CreateApplianceRequest) =>
+    request<CreateApplianceResponse>('/appliances', {
       method: 'POST',
       body: JSON.stringify(body),
     }),

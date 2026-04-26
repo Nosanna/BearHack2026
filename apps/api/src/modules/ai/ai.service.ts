@@ -20,6 +20,7 @@ import {
 
 export interface ApplianceDetection {
   type: ApplianceType;
+  typeOptions?: Array<{ type: ApplianceType; confidence: number }>;
   brand: string | null;
   model: string | null;
   confidence: number;
@@ -230,7 +231,13 @@ export class AiService {
 
   async detectApplianceFromImage(imageUrl: string): Promise<ApplianceDetection> {
     if (!this.client) {
-      return { type: ApplianceType.OTHER, brand: null, model: null, confidence: 0.0 };
+      return {
+        type: ApplianceType.OTHER,
+        typeOptions: [{ type: ApplianceType.OTHER, confidence: 0.0 }],
+        brand: null,
+        model: null,
+        confidence: 0.0,
+      };
     }
 
     const inline = await fetchImageAsInlinePart(imageUrl);
@@ -261,10 +268,34 @@ export class AiService {
     const parsed = safeJsonParse<ApplianceDetection>(raw);
     if (!parsed || !(parsed.type in ApplianceType)) {
       this.logger.warn(`Vision returned unparseable detection: ${raw.slice(0, 200)}`);
-      return { type: ApplianceType.OTHER, brand: null, model: null, confidence: 0.0 };
+      return {
+        type: ApplianceType.OTHER,
+        typeOptions: [{ type: ApplianceType.OTHER, confidence: 0.0 }],
+        brand: null,
+        model: null,
+        confidence: 0.0,
+      };
     }
+
+    const cleanedOptions =
+      Array.isArray(parsed.typeOptions) && parsed.typeOptions.length > 0
+        ? parsed.typeOptions
+            .filter(
+              (o): o is { type: ApplianceType; confidence: number } =>
+                !!o &&
+                typeof o === 'object' &&
+                'type' in o &&
+                'confidence' in o &&
+                typeof (o as any).confidence === 'number' &&
+                (o as any).type in ApplianceType,
+            )
+            .map((o) => ({ type: o.type, confidence: clamp01(o.confidence) }))
+            .sort((a, b) => b.confidence - a.confidence)
+            .slice(0, 3)
+        : [{ type: parsed.type, confidence: clamp01(parsed.confidence ?? 0) }];
     return {
       type: parsed.type,
+      typeOptions: cleanedOptions,
       brand: parsed.brand ?? null,
       model: parsed.model ?? null,
       confidence: clamp01(parsed.confidence ?? 0),
