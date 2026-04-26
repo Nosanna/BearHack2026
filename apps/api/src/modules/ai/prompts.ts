@@ -75,6 +75,8 @@ type MaintenancePlanPayload = {
   tasks: Array<{
     title: string;            // 3–8 words, action-first ("Clean condenser coils").
     description: string;      // 1–3 sentences, plain language, telling the user how.
+    category?: string;        // Optional tag for special flows (e.g. "DRYER_LINT_FILTER").
+    focusPart?: string;       // Optional target part for vision flows (e.g. "lint_filter").
     cadenceDays: number;      // Recurrence interval in days (e.g. 30, 90, 180, 365).
     estimatedMinutes: number; // Realistic time for a typical homeowner.
     safetyWarnings: string[]; // 0–3 short cautions (gas, electrical, water, sharp parts).
@@ -87,6 +89,7 @@ Rules:
 - Use realistic cadences sourced from manufacturer guidance and common practice.
 - If brand/model is provided, prefer brand-specific advice (e.g. LG vs Whirlpool).
 - Skip tasks that require a licensed technician or aren't homeowner-safe.
+- If the appliance is a DRYER and the task is specifically about cleaning the lint filter/screen, set category="DRYER_LINT_FILTER" and focusPart="lint_filter".
 - Every safetyWarning must be specific and actionable; never vague ("be careful").
 - whyItMatters must explain the failure mode, NOT restate the task.
 - Never include emojis.`;

@@ -167,6 +167,10 @@ export interface MaintenanceTaskDto {
   applianceType: ApplianceType;
   title: string;
   description: string | null;
+  /** Optional category tag used for special UI flows (e.g. DRYER_LINT_FILTER). */
+  category: string | null;
+  /** Optional target part for vision flows (e.g. lint_filter). */
+  focusPart: string | null;
   dueDate: string;
   status: TaskStatus;
   estimatedMinutes: number | null;
@@ -198,6 +202,22 @@ export interface SnoozeTaskRequest {
 
 export interface SnoozeTaskResponse {
   task: MaintenanceTaskDto;
+}
+
+// ---- Vision (part detection) ----
+export type PartDetection = {
+  label: string;
+  confidence: number; // 0..1
+  /** Normalized bbox in 0..1 relative to the input image. */
+  bbox: { x: number; y: number; w: number; h: number };
+};
+
+export interface DetectPartsRequest {
+  imageUrl: string;
+}
+
+export interface DetectPartsResponse {
+  detections: PartDetection[];
 }
 
 // ---- Media ----

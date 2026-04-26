@@ -50,7 +50,12 @@ export function ApplianceDetailScreen() {
         .filter(Boolean)
         .join('\n');
       const session = await api.startRepair({ applianceId: id, symptom: symptomText });
-      nav.navigate('Assistant', { sessionId: session.id });
+      const isDryerLint = a.type === 'DRYER' && selectedTask?.category === 'DRYER_LINT_FILTER';
+      if (isDryerLint) {
+        nav.navigate('LintGuidedCamera', { sessionId: session.id });
+      } else {
+        nav.navigate('Assistant', { sessionId: session.id });
+      }
     } catch (e) {
       Alert.alert('Could not start maintenance', (e as Error).message);
     } finally {
@@ -127,7 +132,7 @@ export function ApplianceDetailScreen() {
         {[a.brand, a.model].filter(Boolean).join(' · ') || a.type.replace(/_/g, ' ')}
       </Text>
 
-      {fromHomeUpcoming && selectedTask ? (
+      {selectedTask ? (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Start maintenance</Text>
           <Text style={styles.maintenanceTitle} numberOfLines={2}>

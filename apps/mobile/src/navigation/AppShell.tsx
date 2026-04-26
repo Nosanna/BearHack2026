@@ -9,6 +9,7 @@ import { CameraScreen } from '../screens/CameraScreen';
 import { ApplianceSaveScreen } from '../screens/ApplianceSaveScreen';
 import { AssistantScreen } from '../screens/AssistantScreen';
 import { RoomDetailScreen } from '../screens/RoomDetailScreen';
+import { LintGuidedCameraScreen } from '../screens/LintGuidedCameraScreen';
 import { BottomNav } from './BottomNav';
 import { theme } from '../theme';
 
@@ -17,6 +18,7 @@ export type RootStackParamList = {
   RoomDetail: { roomId: string };
   Camera: { mode: 'register' | 'repair-step'; sessionId?: string; roomId?: string };
   ApplianceDetail: { applianceId: string; taskId?: string; source?: 'home-upcoming' };
+  LintGuidedCamera: { sessionId: string };
   ApplianceSave: {
     roomId: string;
     imageUrl: string;
@@ -85,6 +87,11 @@ export function AppShell() {
           name="Camera"
           component={CameraScreen}
           options={{ headerShown: true, title: 'Camera' }}
+        />
+        <Stack.Screen
+          name="LintGuidedCamera"
+          component={LintGuidedCameraScreen}
+          options={{ headerShown: true, title: 'Lint filter' }}
         />
         <Stack.Screen
           name="ApplianceSave"

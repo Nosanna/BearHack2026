@@ -160,6 +160,11 @@ model MaintenanceTask {
   appliance        Appliance  @relation(fields: [applianceId], references: [id], onDelete: Cascade)
   title            String
   description      String?
+  /// Optional category tag used for special UI flows (e.g. lint-filter guided camera).
+  /// Example values: "DRYER_LINT_FILTER"
+  category         String?
+  /// Optional target part for vision flows (e.g. "lint_filter").
+  focusPart        String?
   dueDate          DateTime
   status           TaskStatus @default(PENDING)
   estimatedMinutes Int?

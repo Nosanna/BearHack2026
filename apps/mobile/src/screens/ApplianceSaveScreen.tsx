@@ -124,6 +124,8 @@ export function ApplianceSaveScreen() {
       ...base,
       title: t.title,
       description: t.description,
+      category: null,
+      focusPart: null,
       dueDate: new Date(Date.now() + t.cadenceDays * 24 * 60 * 60 * 1000).toISOString(),
       estimatedMinutes: t.estimatedMinutes,
       cadenceDays: t.cadenceDays,

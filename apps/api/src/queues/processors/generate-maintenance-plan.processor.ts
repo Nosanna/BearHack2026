@@ -211,6 +211,8 @@ export class GenerateMaintenancePlanProcessor extends WorkerHost {
           applianceId,
           title: t.title,
           description: t.description || null,
+          category: (t as any).category ?? null,
+          focusPart: (t as any).focusPart ?? null,
           dueDate,
           status: TaskStatus.PENDING,
           estimatedMinutes: t.estimatedMinutes ?? null,

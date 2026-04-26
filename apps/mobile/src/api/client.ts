@@ -22,6 +22,8 @@ import type {
   SnoozeTaskResponse,
   StartRepairRequest,
   RepairSessionDto,
+  DetectPartsRequest,
+  DetectPartsResponse,
 } from '@fixit/shared';
 
 const ACCESS_KEY = 'fixit.accessToken';
@@ -290,6 +292,12 @@ export const api = {
 
   signedUpload: (body: SignedUploadRequest) =>
     request<SignedUploadResponse>('/media/signed-upload', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  detectParts: (body: DetectPartsRequest) =>
+    request<DetectPartsResponse>('/vision/parts/detect', {
       method: 'POST',
       body: JSON.stringify(body),
     }),

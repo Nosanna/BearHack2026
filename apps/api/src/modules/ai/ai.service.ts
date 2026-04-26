@@ -41,6 +41,8 @@ export interface PhotoVerification {
 export interface MaintenanceTaskTemplate {
   title: string;
   description: string;
+  category?: string;
+  focusPart?: string;
   cadenceDays: number;
   estimatedMinutes: number;
   safetyWarnings: string[];
@@ -794,9 +796,14 @@ function sanitizeMaintenanceTask(raw: unknown): MaintenanceTaskTemplate | null {
         .slice(0, 5)
     : [];
 
+  const category = typeof r.category === 'string' ? r.category.trim().slice(0, 80) : undefined;
+  const focusPart = typeof r.focusPart === 'string' ? r.focusPart.trim().slice(0, 80) : undefined;
+
   return {
     title,
     description,
+    category: category || undefined,
+    focusPart: focusPart || undefined,
     cadenceDays: Math.round(cadenceDays),
     estimatedMinutes:
       Number.isFinite(estimatedMinutes) && estimatedMinutes > 0

@@ -59,6 +59,8 @@ export class TasksService {
             applianceId: task.applianceId,
             title: task.title,
             description: task.description,
+            category: (task as any).category ?? null,
+            focusPart: (task as any).focusPart ?? null,
             dueDate: nextDue,
             status: TaskStatus.PENDING,
             estimatedMinutes: task.estimatedMinutes,
