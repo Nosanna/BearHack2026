@@ -2,6 +2,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, HttpUrl
 import requests
 from ultralytics import YOLO
+from PIL import Image
+import numpy as np
+import io
 
 
 class InferRequest(BaseModel):
@@ -20,7 +23,15 @@ def infer(req: InferRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not fetch imageUrl: {e}")
 
-    results = model.predict(source=r.content, verbose=False)
+    # Ultralytics does not accept arbitrary raw bytes as `source`.
+    # Decode bytes → RGB array and pass that to YOLO.
+    try:
+        img = Image.open(io.BytesIO(r.content)).convert("RGB")
+        arr = np.array(img)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Unsupported/invalid image bytes: {e}")
+
+    results = model.predict(source=arr, verbose=False)
     if not results:
         return {"detections": []}
 

@@ -42,18 +42,30 @@ export function ApplianceDetailScreen() {
   const startMaintenance = async (taskTitle: string, taskDescription: string | null) => {
     setStarting(true);
     try {
-      const symptomText = [
-        `Perform maintenance task: ${taskTitle}`,
-        taskDescription ? `Details: ${taskDescription}` : null,
-        'Make this a safe step-by-step maintenance checklist as a state machine.',
-      ]
-        .filter(Boolean)
-        .join('\n');
-      const session = await api.startRepair({ applianceId: id, symptom: symptomText });
       const isDryerLint = a.type === 'DRYER' && selectedTask?.category === 'DRYER_LINT_FILTER';
       if (isDryerLint) {
-        nav.navigate('LintGuidedCamera', { sessionId: session.id });
+        // #region agent log
+        fetch('http://127.0.0.1:7901/ingest/858e3ef0-15fa-4006-be55-bfedf1b0470c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'239de5'},body:JSON.stringify({sessionId:'239de5',runId:'pre-fix',hypothesisId:'G1',location:'ApplianceDetailScreen.tsx:startMaintenance',message:'Dryer lint task: skipping startRepair; entering YOLO camera',data:{applianceId:id,taskTitle},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+        console.log('[lintflow] enter yolo camera (no startRepair yet)', {
+          applianceId: id,
+          taskTitle,
+          taskCategory: selectedTask?.category,
+        });
+        nav.navigate('LintGuidedCamera', { applianceId: id, taskTitle, taskDescription });
       } else {
+        const symptomText = [
+          `Perform maintenance task: ${taskTitle}`,
+          taskDescription ? `Details: ${taskDescription}` : null,
+          'Make this a safe step-by-step maintenance checklist as a state machine.',
+        ]
+          .filter(Boolean)
+          .join('\n');
+        // #region agent log
+        fetch('http://127.0.0.1:7901/ingest/858e3ef0-15fa-4006-be55-bfedf1b0470c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'239de5'},body:JSON.stringify({sessionId:'239de5',runId:'pre-fix',hypothesisId:'G2',location:'ApplianceDetailScreen.tsx:startMaintenance',message:'Non-lint maintenance: starting repair session now',data:{applianceId:id,taskTitle},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+        console.log('[lintflow] non-lint startRepair now', { applianceId: id, taskTitle });
+        const session = await api.startRepair({ applianceId: id, symptom: symptomText });
         nav.navigate('Assistant', { sessionId: session.id });
       }
     } catch (e) {
