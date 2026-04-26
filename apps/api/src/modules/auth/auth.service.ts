@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client, type TokenPayload } from 'google-auth-library';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DemoService } from '../demo/demo.service';
 import type { LoginResponse, UserDto } from '@fixit/shared';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly demo: DemoService,
   ) {
     this.googleClientIds = [
       config.get<string>('GOOGLE_CLIENT_ID_IOS'),
@@ -121,6 +123,24 @@ export class AuthService {
       avatarUrl: user.avatarUrl,
     };
     this.logger.warn(`DEV LOGIN issued for ${user.email} (id=${user.id}).`);
+
+    // Auto-seed the demo home for first-time dev-login users so the very
+    // first screen they see has rooms, appliances, and a mix of urgent /
+    // overdue / upcoming tasks. Idempotent — does nothing if already seeded.
+    // Wrapped in try/catch so a seed failure can never break login.
+    try {
+      const summary = await this.demo.ensureSeeded(user.id);
+      if (summary.status === 'seeded') {
+        this.logger.log(
+          `Demo home auto-seeded for ${user.email}: ${summary.rooms} rooms, ${summary.appliances} appliances, ${summary.tasks} tasks.`,
+        );
+      }
+    } catch (e) {
+      this.logger.warn(
+        `Demo auto-seed failed for ${user.email} — continuing without demo data. ${(e as Error).message}`,
+      );
+    }
+
     return { ...tokens, user: dto };
   }
 

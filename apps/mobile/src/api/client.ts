@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import type {
   ApplianceDetailDto,
   ApplianceDto,
+  CompleteTaskResponse,
   DashboardHomeResponse,
   LoginResponse,
   RegisterFromImageRequest,
@@ -12,6 +13,7 @@ import type {
   ScheduleUpcomingResponse,
   SignedUploadRequest,
   SignedUploadResponse,
+  SnoozeTaskResponse,
   StartRepairRequest,
   RepairSessionDto,
 } from '@fixit/shared';
@@ -240,6 +242,30 @@ export const api = {
     request<void>(`/appliances/${id}`, { method: 'DELETE' }),
 
   upcoming: () => request<ScheduleUpcomingResponse>('/schedule/upcoming'),
+
+  completeTask: (id: string) =>
+    request<CompleteTaskResponse>(`/tasks/${id}/complete`, {
+      method: 'POST',
+      body: '{}',
+    }),
+  snoozeTask: (id: string, days?: number) =>
+    request<SnoozeTaskResponse>(`/tasks/${id}/snooze`, {
+      method: 'POST',
+      body: JSON.stringify(days ? { days } : {}),
+    }),
+
+  // Hard-coded demo dataset. /demo/seed is idempotent (no-op if user has
+  // any rooms); /demo/reset wipes everything for the user and re-seeds.
+  seedDemo: () =>
+    request<{ status: string; rooms: number; appliances: number; tasks: number }>(
+      '/demo/seed',
+      { method: 'POST', body: '{}' },
+    ),
+  resetDemo: () =>
+    request<{ status: string; rooms: number; appliances: number; tasks: number }>(
+      '/demo/reset',
+      { method: 'POST', body: '{}' },
+    ),
 
   signedUpload: (body: SignedUploadRequest) =>
     request<SignedUploadResponse>('/media/signed-upload', {

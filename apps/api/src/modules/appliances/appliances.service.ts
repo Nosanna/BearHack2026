@@ -1,7 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { RoomsService } from '../rooms/rooms.service';
+import { QUEUE_NAMES } from '../../queues/queues.constants';
+import { toMaintenanceTaskDto } from '../../common/mappers/maintenance-task.mapper';
 import type {
   ApplianceDetailDto,
   ApplianceDto,
@@ -12,10 +16,14 @@ import type { Appliance } from '@prisma/client';
 
 @Injectable()
 export class AppliancesService {
+  private readonly logger = new Logger(AppliancesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly rooms: RoomsService,
+    @InjectQueue(QUEUE_NAMES.GENERATE_MAINTENANCE_PLAN)
+    private readonly maintenanceQueue: Queue,
   ) {}
 
   async listForUser(userId: string, roomId?: string): Promise<ApplianceDto[]> {
@@ -61,17 +69,12 @@ export class AppliancesService {
     if (!appliance) throw new NotFoundException('Appliance not found.');
 
     const primary = appliance.images.find((i) => i.isPrimary) ?? appliance.images[0];
-    const tasks: MaintenanceTaskDto[] = appliance.maintenanceTasks.map((t) => ({
-      id: t.id,
-      applianceId: t.applianceId,
-      applianceNickname: appliance.nickname,
-      applianceType: appliance.type,
-      title: t.title,
-      description: t.description,
-      dueDate: t.dueDate.toISOString(),
-      status: t.status,
-      estimatedMinutes: t.estimatedMinutes,
-    }));
+    const tasks: MaintenanceTaskDto[] = appliance.maintenanceTasks.map((t) =>
+      toMaintenanceTaskDto(t, {
+        nickname: appliance.nickname,
+        type: appliance.type,
+      }),
+    );
 
     return {
       ...this.toDto(appliance, primary?.url ?? null),
@@ -117,6 +120,25 @@ export class AppliancesService {
       },
       include: { images: true },
     });
+
+    // Kick off the proactive maintenance plan in the background — we don't
+    // want to block the registration response on a Gemini call.
+    try {
+      await this.maintenanceQueue.add(
+        'generate-maintenance-plan',
+        { userId, applianceId: appliance.id },
+        {
+          jobId: `plan:${appliance.id}`,
+          removeOnComplete: 100,
+          removeOnFail: 50,
+          attempts: 2,
+        },
+      );
+    } catch (e) {
+      this.logger.warn(
+        `Failed to enqueue maintenance plan for appliance ${appliance.id}: ${(e as Error).message}`,
+      );
+    }
 
     return {
       appliance: this.toDto(appliance, args.imageUrl),
