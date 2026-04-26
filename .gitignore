@@ -29,3 +29,18 @@ apps/api/.local-uploads/
 
 .vscode/
 .idea/
+
+packages/shared/src/api-types.js
+packages/shared/src/api-types.js.map
+packages/shared/src/enums.js
+packages/shared/src/enums.js.map
+packages/shared/src/index.js
+packages/shared/src/index.js.map
+packages/shared/src/state-machine.js
+packages/shared/src/state-machine.js.map
+.env.example
+apps/api/.env.example
+apps/mobile/App.tsx
+apps/mobile/src/api/client.ts
+apps/mobile/src/screens/LoginScreen.tsx
+package.json

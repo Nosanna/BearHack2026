@@ -1,6 +1,6 @@
 import React from 'react';
-import { Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { DashboardScreen } from '../screens/DashboardScreen';
 import { ScheduleScreen } from '../screens/ScheduleScreen';
 import { CameraEntryScreen } from '../screens/CameraEntryScreen';
@@ -27,7 +27,13 @@ export function BottomNav() {
         component={DashboardScreen}
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>•</Text>,
+          tabBarIcon: ({ color, focused, size }) => (
+            <Ionicons
+              name={focused ? 'home' : 'home-outline'}
+              color={color}
+              size={size ?? 22}
+            />
+          ),
         }}
       />
       <Tab.Screen
@@ -35,7 +41,13 @@ export function BottomNav() {
         component={CameraEntryScreen}
         options={{
           title: 'Add',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>+</Text>,
+          tabBarIcon: ({ color, focused, size }) => (
+            <Ionicons
+              name={focused ? 'add-circle' : 'add-circle-outline'}
+              color={color}
+              size={size ?? 24}
+            />
+          ),
         }}
       />
       <Tab.Screen
@@ -43,7 +55,13 @@ export function BottomNav() {
         component={ScheduleScreen}
         options={{
           title: 'Schedule',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>•</Text>,
+          tabBarIcon: ({ color, focused, size }) => (
+            <Ionicons
+              name={focused ? 'calendar' : 'calendar-outline'}
+              color={color}
+              size={size ?? 22}
+            />
+          ),
         }}
       />
     </Tab.Navigator>

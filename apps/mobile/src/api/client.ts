@@ -77,6 +77,11 @@ async function request<T>(
   path: string,
   init: RequestInit & { auth?: boolean; _retry?: boolean } = {},
 ): Promise<T> {
+  if (__DEV__) {
+    // #region agent log
+    console.log('[agent][H1] api request start', { apiUrl, path, auth: init.auth !== false });
+    // #endregion agent log
+  }
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((init.headers as Record<string, string>) ?? {}),
@@ -95,10 +100,24 @@ async function request<T>(
   } catch (e) {
     clearTimeout(timer);
     if (ctrl.signal.aborted) {
+      if (__DEV__) {
+        // #region agent log
+        console.log('[agent][H2] api request timeout', { apiUrl, path, timeoutMs: REQUEST_TIMEOUT_MS });
+        // #endregion agent log
+      }
       throw new ApiError(
         0,
         `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s. Check that your phone and Mac are on the same Wi-Fi.`,
       );
+    }
+    if (__DEV__) {
+      // #region agent log
+      console.log('[agent][H3] api request network error', {
+        apiUrl,
+        path,
+        message: (e as Error)?.message ?? String(e),
+      });
+      // #endregion agent log
     }
     throw new ApiError(0, (e as Error).message || 'Network request failed');
   }

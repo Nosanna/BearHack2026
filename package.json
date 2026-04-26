@@ -10,7 +10,7 @@
   "scripts": {
     "dev:infra": "docker compose up -d postgres redis",
     "dev:infra:down": "docker compose down",
-    "dev:api": "pnpm --filter @fixit/api start:dev",
+    "dev:api": "pnpm --filter @fixit/shared build && pnpm --filter @fixit/api start:dev",
     "dev:mobile": "pnpm --filter @fixit/mobile start",
     "build": "pnpm -r --filter \"./packages/*\" build && pnpm --filter @fixit/api build",
     "lint": "pnpm -r lint",

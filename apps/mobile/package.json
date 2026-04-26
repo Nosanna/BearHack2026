@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@babel/runtime": "^7.26.0",
+    "@expo/vector-icons": "^15.1.1",
     "@fixit/shared": "workspace:*",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-navigation/bottom-tabs": "^7.0.0",

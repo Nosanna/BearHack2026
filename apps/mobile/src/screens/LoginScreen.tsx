@@ -31,8 +31,14 @@ export function LoginScreen() {
   const onDevLogin = async () => {
     setBusy(true);
     try {
+      // #region agent log
+      console.log('[agent][H1] devSignIn pressed');
+      // #endregion agent log
       await devSignIn();
     } catch (e) {
+      // #region agent log
+      console.log('[agent][H3] devSignIn failed', { message: (e as Error)?.message ?? String(e) });
+      // #endregion agent log
       Alert.alert('Dev sign-in failed', (e as Error).message);
     } finally {
       setBusy(false);
