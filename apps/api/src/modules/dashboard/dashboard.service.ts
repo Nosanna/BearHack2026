@@ -13,6 +13,9 @@ export class DashboardService {
     });
     if (!user) throw new NotFoundException('User not found.');
 
+    const horizon = new Date();
+    horizon.setDate(horizon.getDate() + 30);
+
     const [rooms, tasks, activeRepair] = await Promise.all([
       this.prisma.room.findMany({
         where: { ownerId: userId },
@@ -23,6 +26,9 @@ export class DashboardService {
         where: {
           ownerId: userId,
           status: { in: ['PENDING', 'IN_PROGRESS', 'OVERDUE'] },
+          // Match /schedule/upcoming: only show tasks due within the next 30 days
+          // (plus already-overdue tasks, which also satisfy lte horizon).
+          dueDate: { lte: horizon },
         },
         orderBy: { dueDate: 'asc' },
         take: 8,
